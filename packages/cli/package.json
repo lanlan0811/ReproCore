@@ -1,0 +1,30 @@
+{
+  "name": "reprocore",
+  "version": "0.1.0",
+  "description": "Minimize MCP failures into safe, executable reproduction cases",
+  "license": "AGPL-3.0-only",
+  "type": "module",
+  "bin": {
+    "reprocore": "./dist/cli.js"
+  },
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    }
+  },
+  "files": [
+    "dist/**/*.js",
+    "dist/**/*.d.ts",
+    "dist/**/*.map",
+    "README.md"
+  ],
+  "engines": {
+    "node": ">=22.13.0"
+  },
+  "scripts": {
+    "build": "tsc -b"
+  }
+}

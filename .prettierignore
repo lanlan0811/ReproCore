@@ -1,0 +1,6 @@
+dist
+coverage
+node_modules
+*.mincase.zip
+pnpm-lock.yaml
+LICENSE

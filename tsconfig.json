@@ -1,0 +1,14 @@
+{
+  "files": [],
+  "references": [
+    { "path": "packages/format" },
+    { "path": "packages/protocol-mcp" },
+    { "path": "packages/capture-stdio" },
+    { "path": "packages/replay" },
+    { "path": "packages/oracles" },
+    { "path": "packages/minimizer" },
+    { "path": "packages/redaction" },
+    { "path": "packages/report" },
+    { "path": "packages/cli" }
+  ]
+}
