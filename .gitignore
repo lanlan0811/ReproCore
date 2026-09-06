@@ -1,7 +1,10 @@
+# Local agent development instructions
 AGENTS.md
 
+# Local product and technical blueprint
 docs/2026-09-07_MCP-MinCase_产品与技术开发蓝图.md
 
+# AI-assisted development workspace files
 .codex/*
 .zcode/*
 .trae/*
