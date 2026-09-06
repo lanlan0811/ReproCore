@@ -5,3 +5,58 @@ docs/2026-09-07_MCP-MinCase_产品与技术开发蓝图.md
 .codex/*
 .zcode/*
 .trae/*
+
+# Dependencies and package-manager state
+node_modules/
+.pnpm-store/
+.pnp.*
+
+# Build and TypeScript outputs
+dist/
+build/
+out/
+*.tsbuildinfo
+
+# Test and coverage outputs
+coverage/
+.nyc_output/
+.vitest/
+test-results/
+
+# ReproCore local runs, caches, and packed cases
+/.reprocore/
+/runs/
+/cases/
+/artifacts/
+/release/
+reprocore-*.tgz
+reprocore-*.zip
+*.mincase.zip
+
+# Logs and temporary files
+*.log
+npm-debug.log*
+pnpm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+*.tmp
+*.temp
+/tmp/
+/temp/
+
+# Local environment and credentials
+.env
+.env.*
+!.env.example
+*.key
+*.pem
+
+# Editors and operating systems
+.idea/
+*.suo
+*.user
+*.swp
+*.swo
+.DS_Store
+Thumbs.db
+Desktop.ini
