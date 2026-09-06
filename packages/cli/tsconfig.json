@@ -6,5 +6,9 @@
     "tsBuildInfoFile": "../../node_modules/.cache/reprocore/cli.tsbuildinfo"
   },
   "include": ["src/**/*.ts"],
-  "references": [{ "path": "../capture-stdio" }]
+  "references": [
+    { "path": "../capture-stdio" },
+    { "path": "../oracles" },
+    { "path": "../replay" }
+  ]
 }

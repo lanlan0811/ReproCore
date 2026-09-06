@@ -13,5 +13,10 @@
   },
   "scripts": {
     "build": "tsc -b"
+  },
+  "dependencies": {
+    "@reprocore/format": "workspace:*",
+    "@reprocore/oracles": "workspace:*",
+    "zod": "^4.1.5"
   }
 }

@@ -1,0 +1,14 @@
+version: 1
+name: wrong-target-file
+repeat: 3
+mode: all
+timeoutMs: 10000
+rules:
+  - kind: tool_called
+    tool: write_file
+  - kind: file_hash
+    path: fixtures/report.md
+    operator: not_equals
+    expected: sha256:d08b2c2b32f0c39dfc1ff9672c53523ba24ad6fc9eb999137cb4758441ad51ce
+  - kind: forbidden_effect
+    effect: wrong_target_written

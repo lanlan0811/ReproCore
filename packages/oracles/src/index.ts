@@ -1,2 +1,2 @@
-/** Internal oracles package metadata. */
-export const packageName = "@reprocore/oracles" as const;
+export * from "./document.js";
+export * from "./evaluate.js";

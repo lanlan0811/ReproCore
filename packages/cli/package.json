@@ -28,6 +28,8 @@
     "build": "tsc -b"
   },
   "dependencies": {
-    "@reprocore/capture-stdio": "workspace:*"
+    "@reprocore/capture-stdio": "workspace:*",
+    "@reprocore/oracles": "workspace:*",
+    "@reprocore/replay": "workspace:*"
   }
 }

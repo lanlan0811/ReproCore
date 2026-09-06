@@ -1,2 +1,2 @@
-/** Internal replay package metadata. */
-export const packageName = "@reprocore/replay" as const;
+export * from "./fixture.js";
+export * from "./replay.js";
