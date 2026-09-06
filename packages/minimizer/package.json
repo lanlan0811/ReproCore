@@ -13,5 +13,13 @@
   },
   "scripts": {
     "build": "tsc -b"
+  },
+  "dependencies": {
+    "@reprocore/format": "workspace:*",
+    "@reprocore/protocol-mcp": "workspace:*"
+  },
+  "devDependencies": {
+    "@reprocore/oracles": "workspace:*",
+    "@reprocore/replay": "workspace:*"
   }
 }

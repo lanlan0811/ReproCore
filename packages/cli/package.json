@@ -29,6 +29,7 @@
   },
   "dependencies": {
     "@reprocore/capture-stdio": "workspace:*",
+    "@reprocore/minimizer": "workspace:*",
     "@reprocore/oracles": "workspace:*",
     "@reprocore/replay": "workspace:*"
   }

@@ -1,3 +1,4 @@
+import { writeFileSync } from "node:fs";
 import { resolve } from "node:path";
 import type { Writable } from "node:stream";
 import {
@@ -5,13 +6,21 @@ import {
   SensitiveContentError,
 } from "@reprocore/capture-stdio";
 import {
+  minimizeTransactions,
+  type DependencyGraph,
+  type TransactionUnit,
+} from "@reprocore/minimizer";
+import {
   createOracleTemplate,
+  evaluateOracle,
   readOracleDocument,
   writeOracleDocument,
 } from "@reprocore/oracles";
 import {
   readReplayFixture,
   runDoctor,
+  runFixtureReplay,
+  type ReplayFixture,
   verifyBaseline,
 } from "@reprocore/replay";
 import { EXIT_CODES, VERSION } from "./index.js";
@@ -23,6 +32,7 @@ Usage:
   reprocore capture --out <directory> [--include-content] [--json] -- <server> [args...]
   reprocore oracle init --out <oracle.yaml> [--name <name>] [--json]
   reprocore replay --fixture <fixture.json> --oracle <oracle.yaml> [--repeat <count>] [--json]
+  reprocore minimize --fixture <fixture.json> --oracle <oracle.yaml> --out <fixture.json> [--json]
   reprocore --version
 
 Commands:
@@ -30,6 +40,7 @@ Commands:
   capture  Transparently proxy and record an MCP stdio server
   oracle   Create a versioned failure-oracle document
   replay   Run deterministic fixed-response replay and baseline checks
+  minimize Reduce replay transactions while preserving the failure Oracle
 
 Options:
   -h, --help         Show this help
@@ -50,6 +61,41 @@ interface CaptureArguments {
   includeContent: boolean;
   json: boolean;
   outputDirectory: string;
+}
+
+interface FixtureTransaction extends TransactionUnit {
+  exchange: ReplayFixture["exchanges"][number];
+}
+
+function fixtureDependencyGraph(
+  fixture: ReplayFixture,
+  transactions: readonly FixtureTransaction[],
+): DependencyGraph {
+  const graph = new Map(
+    transactions.map(
+      (transaction) => [transaction.transactionId, new Set<string>()] as const,
+    ),
+  );
+  let initialize: string | undefined;
+  let discovery: string | undefined;
+  for (const transaction of transactions) {
+    const method = transaction.exchange.request.method;
+    if (method === "initialize") initialize = transaction.transactionId;
+    if (method === "tools/list" || method === "server/discover") {
+      discovery = transaction.transactionId;
+    }
+    if (
+      fixture.protocolVersion === "2025-11-25" &&
+      method !== "initialize" &&
+      initialize !== undefined
+    ) {
+      graph.get(transaction.transactionId)!.add(initialize);
+    }
+    if (method === "tools/call" && discovery !== undefined) {
+      graph.get(transaction.transactionId)!.add(discovery);
+    }
+  }
+  return graph;
 }
 
 function optionValue(args: string[], name: string): string | undefined {
@@ -201,6 +247,103 @@ export async function runCli(
       return baseline.status === "STABLE"
         ? EXIT_CODES.success
         : EXIT_CODES.flakyUnsupported;
+    }
+
+    if (command === "minimize") {
+      const commandArgs = args.slice(1);
+      const fixturePath = optionValue(commandArgs, "--fixture");
+      const oraclePath = optionValue(commandArgs, "--oracle");
+      const outputPath = optionValue(commandArgs, "--out");
+      if (
+        fixturePath === undefined ||
+        oraclePath === undefined ||
+        outputPath === undefined
+      ) {
+        throw new Error(
+          "minimize requires --fixture <fixture.json>, --oracle <oracle.yaml>, and --out <fixture.json>",
+        );
+      }
+      const fixture = readReplayFixture(resolve(fixturePath));
+      const oracle = readOracleDocument(resolve(oraclePath));
+      const baseline = verifyBaseline(fixture, oracle, 3);
+      if (baseline.status !== "STABLE") return EXIT_CODES.flakyUnsupported;
+
+      const transactions: FixtureTransaction[] = fixture.exchanges.map(
+        (exchange, index) => ({
+          transactionId: `exchange-${index}`,
+          exchange,
+        }),
+      );
+      const maxTestsText = optionValue(commandArgs, "--budget-tests");
+      const maxDurationText = optionValue(commandArgs, "--budget-ms");
+      const maxTests =
+        maxTestsText === undefined ? 10_000 : Number.parseInt(maxTestsText, 10);
+      const maxDurationMs =
+        maxDurationText === undefined
+          ? 10 * 60 * 1_000
+          : Number.parseInt(maxDurationText, 10);
+      if (!Number.isInteger(maxTests) || maxTests < 1) {
+        throw new Error("--budget-tests must be a positive integer");
+      }
+      if (!Number.isInteger(maxDurationMs) || maxDurationMs < 1) {
+        throw new Error("--budget-ms must be a positive integer");
+      }
+
+      const result = await minimizeTransactions(transactions, {
+        dependencyGraph: fixtureDependencyGraph(fixture, transactions),
+        maxTests,
+        maxDurationMs,
+        validate: (candidate) => candidate.length > 0,
+        test: async (candidate) => {
+          const candidateFixture: ReplayFixture = {
+            ...fixture,
+            exchanges: candidate.map((transaction) => transaction.exchange),
+          };
+          return evaluateOracle(
+            oracle,
+            runFixtureReplay(candidateFixture).observation,
+          ).result;
+        },
+      });
+      const minimizedFixture: ReplayFixture = {
+        ...fixture,
+        exchanges: result.transactions.map(
+          (transaction) => transaction.exchange,
+        ),
+      };
+      const resolvedOutput = resolve(outputPath);
+      writeFileSync(
+        resolvedOutput,
+        `${JSON.stringify(minimizedFixture, null, 2)}\n`,
+        {
+          encoding: "utf8",
+          flag: "wx",
+        },
+      );
+      const proofPath = resolve(
+        optionValue(commandArgs, "--proof") ?? `${outputPath}.proof.json`,
+      );
+      writeFileSync(proofPath, `${JSON.stringify(result, null, 2)}\n`, {
+        encoding: "utf8",
+        flag: "wx",
+      });
+      const summary = {
+        originalCount: result.originalCount,
+        finalCount: result.finalCount,
+        reductionRate: result.reductionRate,
+        minimality: result.minimality,
+        output: resolvedOutput,
+        proof: proofPath,
+      };
+      writeResult(
+        io,
+        commandArgs.includes("--json"),
+        summary,
+        `${result.minimality}: ${result.originalCount} -> ${result.finalCount} transactions`,
+      );
+      return result.minimality === "oneMinimal"
+        ? EXIT_CODES.success
+        : EXIT_CODES.unresolved;
     }
 
     io.stderr.write(`Unknown command: ${command}\n`);

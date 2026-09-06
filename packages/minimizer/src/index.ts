@@ -1,2 +1,2 @@
-/** Internal minimizer package metadata. */
-export const packageName = "@reprocore/minimizer" as const;
+export * from "./ddmin.js";
+export * from "./dependencies.js";
