@@ -9,18 +9,24 @@ import {
   readOracleDocument,
   writeOracleDocument,
 } from "@reprocore/oracles";
-import { readReplayFixture, verifyBaseline } from "@reprocore/replay";
+import {
+  readReplayFixture,
+  runDoctor,
+  verifyBaseline,
+} from "@reprocore/replay";
 import { EXIT_CODES, VERSION } from "./index.js";
 
 const HELP = `ReproCore ${VERSION}
 
 Usage:
+  reprocore doctor [--json]
   reprocore capture --out <directory> [--include-content] [--json] -- <server> [args...]
   reprocore oracle init --out <oracle.yaml> [--name <name>] [--json]
   reprocore replay --fixture <fixture.json> --oracle <oracle.yaml> [--repeat <count>] [--json]
   reprocore --version
 
 Commands:
+  doctor   Check runtime and isolation backend availability
   capture  Transparently proxy and record an MCP stdio server
   oracle   Create a versioned failure-oracle document
   replay   Run deterministic fixed-response replay and baseline checks
@@ -111,6 +117,23 @@ export async function runCli(
   }
 
   try {
+    if (command === "doctor") {
+      const json = args.slice(1).includes("--json");
+      const report = await runDoctor();
+      writeResult(
+        io,
+        json,
+        report,
+        report.checks
+          .map(
+            (check) =>
+              `${check.status.toUpperCase()} ${check.name}: ${check.detail}`,
+          )
+          .join("\n"),
+      );
+      return report.ready ? EXIT_CODES.success : EXIT_CODES.executionFailure;
+    }
+
     if (command === "capture") {
       const parsed = parseCaptureArguments(args.slice(1));
       const result = await captureProcess({
