@@ -1,0 +1,4 @@
+{"jsonrpc":"2.0","id":"discover","method":"server/discover","params":{"_meta":{"protocolVersion":"2026-07-28"}}}
+{"jsonrpc":"2.0","id":"discover","result":{"tools":[{"name":"write_file","inputSchema":{"type":"object","properties":{"target":{"type":"object"}}}}]}}
+{"jsonrpc":"2.0","id":"call","method":"tools/call","params":{"_meta":{"protocolVersion":"2026-07-28"},"name":"write_file","arguments":{"target":{"path":"report.md"}}}}
+{"jsonrpc":"2.0","id":"call","result":{"structuredContent":{"path":"report.md"}}}

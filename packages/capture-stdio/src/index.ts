@@ -1,2 +1,3 @@
-/** Internal capture-stdio package metadata. */
-export const packageName = "@reprocore/capture-stdio" as const;
+export * from "./capture.js";
+export * from "./frame-tap.js";
+export * from "./writer.js";

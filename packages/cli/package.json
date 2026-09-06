@@ -26,5 +26,8 @@
   },
   "scripts": {
     "build": "tsc -b"
+  },
+  "dependencies": {
+    "@reprocore/capture-stdio": "workspace:*"
   }
 }

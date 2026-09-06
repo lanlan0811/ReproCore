@@ -1,2 +1,3 @@
-/** Internal protocol-mcp package metadata. */
-export const packageName = "@reprocore/protocol-mcp" as const;
+export * from "./normalize.js";
+export * from "./profiles.js";
+export * from "./transactions.js";
