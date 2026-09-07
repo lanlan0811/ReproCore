@@ -1,5 +1,7 @@
 # CLI 参考
 
+English: [CLI reference](cli.en.md)
+
 ## 通用约定
 
 ```text
@@ -116,10 +118,3 @@ reprocore verify --case <name.mincase> [--repeat <1..100>] [--json]
 校验格式主版本以及 trace、fixture、Oracle、proof 哈希，然后重放固定 fixture。
 默认要求连续 5 次保持失败。此命令不等同于恶意代码沙箱；导入包仍应按
 [安全文档](security.md)处理。
-
-## English summary
-
-Run `reprocore --help` for the compact command list. The main flow is `capture`,
-`oracle init`, `replay`, `minimize`, `pack`, and `verify`. `redact --check`
-performs a read-only safety scan, while `report` regenerates the offline HTML
-report. Exit code 3 always means a safety policy blocked the operation.

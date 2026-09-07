@@ -1,5 +1,7 @@
 # 安全模型
 
+English: [Security model](security.en.md)
+
 ## 保护目标
 
 ReproCore 的首要目标是避免在捕获、缩减和公开复现过程中泄露凭据或让不可信输入
@@ -58,11 +60,3 @@ explanatory case，使用一次性容器进行人工分析。
 - Docker 的无网络约束依赖本机 Docker daemon 正确执行。
 
 漏洞请按仓库根目录 [SECURITY.md](../SECURITY.md) 私下报告。
-
-## English summary
-
-Content is omitted by default. Explicit content capture performs a first secret
-scan; export performs deterministic redaction, a second scan, and 5/5 replay.
-Unknown attachments and symlinks block export. Local replay executes generated
-fixtures only; real servers and custom scripts require the hardened Docker
-backend. Imported cases must always be treated as untrusted.

@@ -1,5 +1,7 @@
 # 安装与升级
 
+English: [Installation and upgrades](installation.en.md)
+
 ## 运行要求
 
 - Windows 10/11、当前 macOS 或主流 Linux 发行版。
@@ -56,10 +58,3 @@ npm uninstall --global reprocore
 
 升级不会迁移或删除用户案例。读取 `.mincase` 时按 `formatVersion` 主版本检查；
 未知主版本会被拒绝，而不是猜测兼容性。
-
-## English summary
-
-ReproCore requires Node.js 22.13 or newer and recommends Node.js 24 LTS. The
-published CLI is platform-neutral and has no native addon. Install it with
-`npm install --global reprocore@0.1.0`, then run `reprocore doctor`. Docker is
-optional and is needed only for the hardened container backend.

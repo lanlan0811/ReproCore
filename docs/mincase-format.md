@@ -1,5 +1,7 @@
 # `.mincase` 格式
 
+English: [`.mincase` format](mincase-format.en.md)
+
 ## 目录和压缩包
 
 工作案例名为 `<name>.mincase/`，公开产物名为 `<name>.mincase.zip`。名称仅允许小写
@@ -67,10 +69,3 @@ ZIP 条目按可移植路径排序，mtime 固定为 `1980-01-01T00:00:00Z`，�
 - 未知 MCP 协议版本：拒绝，不静默升级。
 - 哈希不一致：拒绝验证与重放。
 - 安全证明失败：不得生成公开 ZIP。
-
-## English summary
-
-A `.mincase` is a versioned working directory and a deterministic ZIP archive.
-It contains only minimized traces, fixtures, Oracles, proofs, schemas, an
-offline report, and a dependency-free regression runner. Raw sessions, caches,
-databases, symlinks, and unexpected top-level entries are forbidden.

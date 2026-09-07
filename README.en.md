@@ -80,11 +80,11 @@ methodology are documented in [benchmarking](docs/benchmarking.md).
 
 ## Documentation and community
 
-- [Installation](docs/installation.md)
-- [CLI reference](docs/cli.md)
-- [Architecture](docs/architecture.md)
-- [Security model](docs/security.md)
-- [`.mincase` format](docs/mincase-format.md)
+- [Installation](docs/installation.en.md)
+- [CLI reference](docs/cli.en.md)
+- [Architecture](docs/architecture.en.md)
+- [Security model](docs/security.en.md)
+- [`.mincase` format](docs/mincase-format.en.md)
 - [Release process](docs/releasing.md)
 - [Contributing](CONTRIBUTING.md)
 - [Governance](GOVERNANCE.md)

@@ -1,5 +1,7 @@
 # 架构
 
+English: [Architecture](architecture.en.md)
+
 ## 数据流
 
 ```text
@@ -61,10 +63,3 @@ JSON 使用排序键规范化后计算 SHA-256。候选缓存键包含阶段命�
 - 临时目录来自操作系统 API，并在验证目标位于预期临时根后清理。
 - 不依赖原生 Node 扩展；SQLite 使用 Node 内置实现。
 - CI 在 Windows、macOS、Linux 使用同一冻结 lockfile。
-
-## English summary
-
-ReproCore separates transparent capture, protocol normalization, deterministic
-replay, Oracle evaluation, two-level minimization, redaction, and packaging into
-nine focused packages. Data contracts are versioned, candidate outcomes are
-three-state, and portable archives are deterministic across supported systems.

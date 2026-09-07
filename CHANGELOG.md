@@ -17,6 +17,7 @@
 - npm、Windows、macOS、Linux 三平台产物、SBOM、校验和、来源证明及 GitHub/Gitee
   镜像发布工作流。
 - GitHub 可识别的双语缺陷模板、默认 PR 模板和结构化外部试用反馈表单。
+- 安装、CLI、架构、安全和 `.mincase` 格式的完整中英文文档与双向导航。
 
 ### Security
 
