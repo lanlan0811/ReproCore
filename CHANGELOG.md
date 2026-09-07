@@ -33,6 +33,8 @@
 - Gitee Release 重跑会校验同名附件内容，并替换哈希不一致的远端产物。
 - `verify` 与 `report` 现在会先验证完整 `.mincase` 目录，拒绝注入的未知文件、数据库和
   符号链接。
+- 独立回归 runner 补齐常用 JSON Schema 2020-12 语义；无法等价支持的 Schema 自动
+  生成 `explanatory` 案例。
 
 ## [0.1.0] - Unreleased
 

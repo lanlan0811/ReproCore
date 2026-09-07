@@ -49,6 +49,9 @@ fixture，包含原始 `protocolVersion`、至少一个请求响应 exchange、�
 
 `oracle.yaml` 是人类可读、版本化的失败判定；runner 中同时放置等价 JSON，确保
 独立 `node --test runner/regression.test.mjs` 不依赖 ReproCore 或第三方 npm 包。
+无依赖 runner 等价实现常用 JSON Schema 2020-12 组合、对象、数组、字符串与数值
+约束；包含 `$ref`、动态引用或其他无法等价实现的 Schema 关键字时，案例必须标记为
+`explanatory`。
 
 ## Proof 与脱敏证明
 

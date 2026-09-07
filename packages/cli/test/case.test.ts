@@ -172,6 +172,170 @@ describe("portable mincase packaging", () => {
     );
   });
 
+  it("preserves supported JSON Schema Oracle semantics in the standalone runner", () => {
+    const root = temporaryDirectory();
+    const options = inputs();
+    options.fixture.exchanges[0]!.response = {
+      jsonrpc: "2.0",
+      id: "write",
+      result: { label: "bad", count: 3, items: [1, 1] },
+    };
+    const resultSchema = (schema: Record<string, unknown>) => ({
+      type: "object",
+      required: ["result"],
+      properties: { result: schema },
+    });
+    options.oracle = {
+      version: 1,
+      name: "composed-schema",
+      repeat: 3,
+      mode: "all",
+      timeoutMs: 10_000,
+      rules: [
+        {
+          kind: "json_pointer",
+          pointer: "/result",
+          operator: "equals",
+          value: { items: [1, 1], count: 3, label: "bad" },
+        },
+        {
+          kind: "json_schema_invalid",
+          schema: {
+            oneOf: [
+              {
+                type: "object",
+                required: ["jsonrpc"],
+                properties: { jsonrpc: { const: "2.0" } },
+              },
+              {
+                type: "object",
+                required: ["id"],
+                properties: { id: { enum: ["write"] } },
+              },
+            ],
+          },
+        },
+        {
+          kind: "json_schema_invalid",
+          schema: resultSchema({
+            type: "object",
+            required: ["label"],
+            properties: {
+              label: { type: "string", minLength: 4, pattern: "^valid" },
+            },
+          }),
+        },
+        {
+          kind: "json_schema_invalid",
+          schema: resultSchema({
+            type: "object",
+            required: ["count"],
+            properties: {
+              count: { type: "integer", minimum: 4, multipleOf: 2 },
+            },
+          }),
+        },
+        {
+          kind: "json_schema_invalid",
+          schema: resultSchema({
+            type: "object",
+            required: ["items"],
+            properties: {
+              items: { type: "array", minItems: 2, uniqueItems: true },
+            },
+          }),
+        },
+        {
+          kind: "json_schema_invalid",
+          schema: resultSchema({
+            type: "object",
+            required: ["items"],
+            properties: {
+              items: {
+                type: "array",
+                contains: { const: 1 },
+                minContains: 3,
+              },
+            },
+          }),
+        },
+        {
+          kind: "json_schema_invalid",
+          schema: resultSchema({
+            type: "object",
+            required: ["label"],
+            properties: { label: {} },
+            dependentRequired: { label: ["missing"] },
+          }),
+        },
+        {
+          kind: "json_schema_invalid",
+          schema: resultSchema({
+            type: "object",
+            if: {
+              type: "object",
+              required: ["label"],
+              properties: { label: { const: "bad" } },
+            },
+            then: {
+              type: "object",
+              required: ["missing"],
+              properties: { missing: {} },
+            },
+          }),
+        },
+      ],
+    };
+    const created = createMinCase({
+      name: "composed-schema",
+      caseDirectory: join(root, "composed-schema.mincase"),
+      outputZip: join(root, "composed-schema.mincase.zip"),
+      ...options,
+    });
+
+    expect(created.manifest.caseType).toBe("executable");
+    const regression = spawnSync(
+      process.execPath,
+      ["--test", "runner/regression.test.mjs"],
+      { cwd: created.caseDirectory, encoding: "utf8", windowsHide: true },
+    );
+    expect(regression.status, regression.stderr).toBe(0);
+  });
+
+  it("marks a referenced Schema as explanatory", () => {
+    const root = temporaryDirectory();
+    const options = inputs();
+    options.oracle = {
+      version: 1,
+      name: "unsupported-standalone-schema",
+      repeat: 3,
+      mode: "all",
+      timeoutMs: 10_000,
+      rules: [
+        {
+          kind: "json_schema_invalid",
+          schema: {
+            $ref: "#/$defs/expected",
+            $defs: { expected: { type: "string" } },
+          },
+        },
+      ],
+    };
+    const created = createMinCase({
+      name: "unsupported-schema",
+      caseDirectory: join(root, "unsupported-schema.mincase"),
+      outputZip: join(root, "unsupported-schema.mincase.zip"),
+      ...options,
+    });
+
+    expect(created.manifest.caseType).toBe("explanatory");
+    expect(
+      JSON.parse(
+        readFileSync(join(created.caseDirectory, "provenance.json"), "utf8"),
+      ),
+    ).toMatchObject({ standaloneRegressionCompatible: false });
+  });
+
   it("refuses injected raw sessions, cache databases, and unknown entries", () => {
     const root = temporaryDirectory();
     const created = createMinCase({

@@ -56,6 +56,11 @@ response ID with the corresponding incoming request ID.
 contains equivalent JSON so `node --test runner/regression.test.mjs` works without
 ReproCore or any third-party npm package.
 
+The dependency-free runner implements equivalent common JSON Schema 2020-12
+composition, object, array, string, and numeric constraints. A case using `$ref`,
+dynamic references, or another Schema keyword that cannot be reproduced
+equivalently is marked `explanatory`.
+
 ## Proof and redaction proof
 
 `artifacts/proof.json` records both minimization stages: candidate ledgers,

@@ -98,7 +98,8 @@ reprocore pack --fixture <fixture.json> --oracle <oracle.yaml> \
 共享一个替换映射脱敏 fixture、Oracle 和 proof，随后再次扫描并做 5/5 重放。
 `--confirm-export` 必不可少；缺失时不会创建目录或 ZIP。不能安全复现的输出只允许
 `explanatory`，安全扫描未通过则完全阻断。压缩包是确定性的，不包含原始会话、
-SQLite、符号链接或意外顶层文件。
+SQLite、符号链接或意外顶层文件。独立 runner 无法等价实现的 Schema 关键字也会让
+案例降为 `explanatory`，避免生成语义不一致的可执行测试。
 
 ## `report`
 

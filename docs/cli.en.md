@@ -110,7 +110,9 @@ result again, and performs a 5/5 replay. `--confirm-export` is mandatory; withou
 the command creates neither a directory nor a ZIP. A result that cannot safely
 reproduce is explanatory-only, while a failed safety scan blocks export entirely.
 The deterministic archive excludes raw sessions, SQLite data, symbolic links, and
-unexpected top-level files.
+unexpected top-level files. A Schema keyword that the dependency-free runner cannot
+implement equivalently also makes the case explanatory-only, preventing an
+inconsistent executable test.
 
 ## `report`
 

@@ -150,6 +150,7 @@ export function replayFixture(fixture) {
 const REGRESSION_TEST = `import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import test from "node:test";
+import { isDeepStrictEqual } from "node:util";
 import { fileURLToPath } from "node:url";
 import { replayFixture } from "./replay-server.mjs";
 
@@ -167,24 +168,85 @@ function pointer(value, path) {
   return { found: true, value: current };
 }
 
+function schemaTypeMatches(value, type) {
+  if (type === "null") return value === null;
+  if (type === "array") return Array.isArray(value);
+  if (type === "object") return value !== null && typeof value === "object" && !Array.isArray(value);
+  if (type === "integer") return Number.isInteger(value);
+  if (type === "number") return typeof value === "number" && Number.isFinite(value);
+  return typeof value === type;
+}
+
 function validates(value, schema) {
-  if (schema.const !== undefined && JSON.stringify(value) !== JSON.stringify(schema.const)) return false;
-  if (Array.isArray(schema.enum) && !schema.enum.some((item) => JSON.stringify(item) === JSON.stringify(value))) return false;
-  if (schema.type === "object") {
-    if (value === null || typeof value !== "object" || Array.isArray(value)) return false;
-    if (Array.isArray(schema.required) && schema.required.some((key) => !(key in value))) return false;
-    for (const [key, child] of Object.entries(schema.properties ?? {})) {
-      if (key in value && !validates(value[key], child)) return false;
+  if (typeof schema === "boolean") return schema;
+  if (schema === null || typeof schema !== "object") return false;
+  if (Array.isArray(schema.allOf) && !schema.allOf.every((child) => validates(value, child))) return false;
+  if (Array.isArray(schema.anyOf) && !schema.anyOf.some((child) => validates(value, child))) return false;
+  if (Array.isArray(schema.oneOf) && schema.oneOf.filter((child) => validates(value, child)).length !== 1) return false;
+  if (schema.not !== undefined && validates(value, schema.not)) return false;
+  if (schema.if !== undefined) {
+    const branch = validates(value, schema.if) ? schema.then : schema.else;
+    if (branch !== undefined && !validates(value, branch)) return false;
+  }
+  if (schema.const !== undefined && !isDeepStrictEqual(value, schema.const)) return false;
+  if (Array.isArray(schema.enum) && !schema.enum.some((item) => isDeepStrictEqual(item, value))) return false;
+  if (schema.type !== undefined) {
+    const types = Array.isArray(schema.type) ? schema.type : [schema.type];
+    if (!types.some((type) => schemaTypeMatches(value, type))) return false;
+  }
+  if (typeof value === "number" && Number.isFinite(value)) {
+    if (typeof schema.minimum === "number" && value < schema.minimum) return false;
+    if (typeof schema.maximum === "number" && value > schema.maximum) return false;
+    if (typeof schema.exclusiveMinimum === "number" && value <= schema.exclusiveMinimum) return false;
+    if (typeof schema.exclusiveMaximum === "number" && value >= schema.exclusiveMaximum) return false;
+    if (typeof schema.multipleOf === "number" && !Number.isInteger(value / schema.multipleOf)) return false;
+  }
+  if (typeof value === "string") {
+    const length = Array.from(value).length;
+    if (typeof schema.minLength === "number" && length < schema.minLength) return false;
+    if (typeof schema.maxLength === "number" && length > schema.maxLength) return false;
+    if (typeof schema.pattern === "string" && !new RegExp(schema.pattern, "u").test(value)) return false;
+  }
+  if (Array.isArray(value)) {
+    if (typeof schema.minItems === "number" && value.length < schema.minItems) return false;
+    if (typeof schema.maxItems === "number" && value.length > schema.maxItems) return false;
+    if (schema.uniqueItems === true && value.some((item, index) => value.slice(0, index).some((prior) => isDeepStrictEqual(prior, item)))) return false;
+    const prefix = Array.isArray(schema.prefixItems) ? schema.prefixItems : [];
+    if (prefix.some((child, index) => index < value.length && !validates(value[index], child))) return false;
+    if (schema.items !== undefined) {
+      for (let index = prefix.length; index < value.length; index += 1) {
+        if (!validates(value[index], schema.items)) return false;
+      }
+    }
+    if (schema.contains !== undefined) {
+      const count = value.filter((item) => validates(item, schema.contains)).length;
+      const minimum = schema.minContains ?? 1;
+      if (count < minimum || (typeof schema.maxContains === "number" && count > schema.maxContains)) return false;
     }
   }
-  if (schema.type === "array") {
-    if (!Array.isArray(value)) return false;
-    if (schema.items && value.some((item) => !validates(item, schema.items))) return false;
+  if (value !== null && typeof value === "object" && !Array.isArray(value)) {
+    const keys = Object.keys(value);
+    if (typeof schema.minProperties === "number" && keys.length < schema.minProperties) return false;
+    if (typeof schema.maxProperties === "number" && keys.length > schema.maxProperties) return false;
+    if (Array.isArray(schema.required) && schema.required.some((key) => !Object.hasOwn(value, key))) return false;
+    const properties = schema.properties ?? {};
+    const patterns = Object.entries(schema.patternProperties ?? {}).map(([pattern, child]) => [new RegExp(pattern, "u"), child]);
+    for (const [key, child] of Object.entries(properties)) {
+      if (Object.hasOwn(value, key) && !validates(value[key], child)) return false;
+    }
+    for (const [key, childValue] of Object.entries(value)) {
+      const matchingPatterns = patterns.filter(([pattern]) => pattern.test(key));
+      if (matchingPatterns.some(([, child]) => !validates(childValue, child))) return false;
+      if (!Object.hasOwn(properties, key) && matchingPatterns.length === 0 && schema.additionalProperties !== undefined && !validates(childValue, schema.additionalProperties)) return false;
+    }
+    if (schema.propertyNames !== undefined && keys.some((key) => !validates(key, schema.propertyNames))) return false;
+    for (const [key, dependencies] of Object.entries(schema.dependentRequired ?? {})) {
+      if (Object.hasOwn(value, key) && dependencies.some((dependency) => !Object.hasOwn(value, dependency))) return false;
+    }
+    for (const [key, child] of Object.entries(schema.dependentSchemas ?? {})) {
+      if (Object.hasOwn(value, key) && !validates(value, child)) return false;
+    }
   }
-  if (schema.type === "string" && typeof value !== "string") return false;
-  if (schema.type === "number" && typeof value !== "number") return false;
-  if (schema.type === "integer" && !Number.isInteger(value)) return false;
-  if (schema.type === "boolean" && typeof value !== "boolean") return false;
   return true;
 }
 
@@ -206,7 +268,7 @@ function evaluateRule(rule, observation) {
     const found = pointer(messages.at(-1), rule.pointer);
     if (rule.operator === "exists") return found.found;
     if (rule.operator === "missing") return !found.found;
-    const matches = found.found && JSON.stringify(found.value) === JSON.stringify(rule.value);
+    const matches = found.found && isDeepStrictEqual(found.value, rule.value);
     return rule.operator === "equals" ? matches : found.found && !matches;
   }
   if (rule.kind === "json_schema_invalid") {
@@ -240,6 +302,99 @@ const REPLAY_FIXTURE_SCHEMA = {
   additionalProperties: false,
 };
 
+const STANDALONE_SCHEMA_KEYWORDS = new Set([
+  "$comment",
+  "$defs",
+  "$id",
+  "$schema",
+  "additionalProperties",
+  "allOf",
+  "anyOf",
+  "const",
+  "contains",
+  "default",
+  "dependentRequired",
+  "dependentSchemas",
+  "deprecated",
+  "description",
+  "else",
+  "enum",
+  "examples",
+  "exclusiveMaximum",
+  "exclusiveMinimum",
+  "if",
+  "items",
+  "maximum",
+  "maxContains",
+  "maxItems",
+  "maxLength",
+  "maxProperties",
+  "minimum",
+  "minContains",
+  "minItems",
+  "minLength",
+  "minProperties",
+  "multipleOf",
+  "not",
+  "oneOf",
+  "pattern",
+  "patternProperties",
+  "prefixItems",
+  "properties",
+  "propertyNames",
+  "readOnly",
+  "required",
+  "then",
+  "title",
+  "type",
+  "uniqueItems",
+  "writeOnly",
+]);
+
+function supportsStandaloneSchema(schema: unknown): boolean {
+  if (typeof schema === "boolean") return true;
+  if (typeof schema !== "object" || schema === null || Array.isArray(schema)) {
+    return false;
+  }
+  for (const [keyword, value] of Object.entries(schema)) {
+    if (!STANDALONE_SCHEMA_KEYWORDS.has(keyword)) return false;
+    if (
+      [
+        "additionalProperties",
+        "contains",
+        "else",
+        "if",
+        "items",
+        "not",
+        "propertyNames",
+        "then",
+      ].includes(keyword) &&
+      !supportsStandaloneSchema(value)
+    ) {
+      return false;
+    }
+    if (
+      ["allOf", "anyOf", "oneOf", "prefixItems"].includes(keyword) &&
+      (!Array.isArray(value) ||
+        value.some((child) => !supportsStandaloneSchema(child)))
+    ) {
+      return false;
+    }
+    if (
+      ["$defs", "dependentSchemas", "patternProperties", "properties"].includes(
+        keyword,
+      ) &&
+      (typeof value !== "object" ||
+        value === null ||
+        Array.isArray(value) ||
+        Object.values(value).some((child) => !supportsStandaloneSchema(child)))
+    ) {
+      return false;
+    }
+  }
+  return true;
+}
+
 export function createMinCase(options: CreateCaseOptions): CreatedCase {
   if (!options.exportConfirmed) {
     throw new SafetyBlockedError(
@@ -266,6 +421,11 @@ export function createMinCase(options: CreateCaseOptions): CreatedCase {
   const hasCustomScript = options.oracle.rules.some(
     (rule) => rule.kind === "custom_script",
   );
+  const standaloneSchemaCompatible = options.oracle.rules.every(
+    (rule) =>
+      rule.kind !== "json_schema_invalid" ||
+      supportsStandaloneSchema(rule.schema),
+  );
   const redaction: RedactionProof = structuredClone(options.redaction);
   redaction.replayVerified = finalVerification.status === "STABLE";
   const exportScan = [
@@ -285,6 +445,7 @@ export function createMinCase(options: CreateCaseOptions): CreatedCase {
   }
   const executable =
     !hasCustomScript &&
+    standaloneSchemaCompatible &&
     baseline.status === "STABLE" &&
     finalVerification.status === "STABLE" &&
     redaction.verified &&
@@ -331,6 +492,7 @@ export function createMinCase(options: CreateCaseOptions): CreatedCase {
         oracleHash: manifest.oracleHash,
         proofHash: manifest.proofHash,
         traceHash: manifest.traceHash,
+        standaloneRegressionCompatible: standaloneSchemaCompatible,
       },
       null,
       2,
