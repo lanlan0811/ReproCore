@@ -30,6 +30,7 @@
   错误摘要中返回对应的稳定退出码。
 - Docker 后端现在强制镜像固定 SHA-256 digest，把正常完成的隔离脚本退出码传递给
   custom script Oracle，并记录调用及输出哈希；超时脚本保持 `UNRESOLVED`。
+- Gitee Release 重跑会校验同名附件内容，并替换哈希不一致的远端产物。
 
 ## [0.1.0] - Unreleased
 

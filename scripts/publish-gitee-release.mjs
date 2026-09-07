@@ -1,3 +1,5 @@
+import { Buffer } from "node:buffer";
+import { createHash } from "node:crypto";
 import { readdirSync, readFileSync } from "node:fs";
 import { basename, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -28,6 +30,27 @@ async function requestJson(fetchImplementation, url, options) {
     throw new Error(`Gitee API ${response.status}: ${detail}`);
   }
   return response.json();
+}
+
+async function requestBytes(fetchImplementation, url, options) {
+  const response = await fetchImplementation(url, options);
+  if (!response.ok) {
+    const detail = (await response.text()).slice(0, 1_000);
+    throw new Error(`Gitee API ${response.status}: ${detail}`);
+  }
+  return Buffer.from(await response.arrayBuffer());
+}
+
+async function requestWithoutBody(fetchImplementation, url, options) {
+  const response = await fetchImplementation(url, options);
+  if (!response.ok) {
+    const detail = (await response.text()).slice(0, 1_000);
+    throw new Error(`Gitee API ${response.status}: ${detail}`);
+  }
+}
+
+function sha256(value) {
+  return createHash("sha256").update(value).digest("hex");
 }
 
 async function findRelease(fetchImplementation, url, headers) {
@@ -81,8 +104,8 @@ export async function publishGiteeRelease(
         { headers },
       )
     : [];
-  const existingNames = new Set(
-    existingAssets.map((asset) => asset.name ?? asset.filename),
+  const existingByName = new Map(
+    existingAssets.map((asset) => [asset.name ?? asset.filename, asset]),
   );
 
   const directory = resolve(releaseDirectory);
@@ -93,13 +116,27 @@ export async function publishGiteeRelease(
   if (assets.length === 0) throw new Error("No Gitee release assets found");
 
   for (const asset of assets) {
-    if (existingNames.has(basename(asset))) continue;
+    const name = basename(asset);
+    const content = readFileSync(asset);
+    const existing = existingByName.get(name);
+    if (existing !== undefined) {
+      if (existing.id === undefined) {
+        throw new Error(`Gitee release asset is missing its ID: ${name}`);
+      }
+      const attachmentUrl = `${baseUrl}/releases/${encodeURIComponent(String(release.id))}/attach_files/${encodeURIComponent(String(existing.id))}`;
+      const downloaded = await requestBytes(
+        fetchImplementation,
+        `${attachmentUrl}/download`,
+        { headers: { ...headers, Accept: "application/octet-stream" } },
+      );
+      if (sha256(downloaded) === sha256(content)) continue;
+      await requestWithoutBody(fetchImplementation, attachmentUrl, {
+        method: "DELETE",
+        headers,
+      });
+    }
     const form = new globalThis.FormData();
-    form.append(
-      "file",
-      new globalThis.Blob([readFileSync(asset)]),
-      basename(asset),
-    );
+    form.append("file", new globalThis.Blob([content]), name);
     await requestJson(
       fetchImplementation,
       `${baseUrl}/releases/${encodeURIComponent(String(release.id))}/attach_files`,

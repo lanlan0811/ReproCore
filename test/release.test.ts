@@ -128,7 +128,7 @@ describe("release tooling", () => {
           }),
         )
         .mockResolvedValueOnce(
-          new Response(JSON.stringify([{ name: "artifact.tgz" }]), {
+          new Response(JSON.stringify([{ id: 7, name: "artifact.tgz" }]), {
             status: 200,
             headers: { "Content-Type": "application/json" },
           }),
@@ -138,7 +138,8 @@ describe("release tooling", () => {
             status: 201,
             headers: { "Content-Type": "application/json" },
           }),
-        );
+        )
+        .mockResolvedValueOnce(new Response("artifact", { status: 200 }));
       const result = await publishGiteeRelease(
         {
           GITEE_ACCESS_TOKEN: "test-token",
@@ -150,8 +151,56 @@ describe("release tooling", () => {
         fetchMock,
       );
       expect(result.assets).toEqual(["SHA256SUMS", "artifact.tgz"]);
-      expect(fetchMock).toHaveBeenCalledTimes(3);
+      expect(fetchMock).toHaveBeenCalledTimes(4);
       expect(fetchMock.mock.calls[2]?.[0]).toMatch(/attach_files$/u);
+      expect(fetchMock.mock.calls[3]?.[0]).toMatch(
+        /attach_files\/7\/download$/u,
+      );
+    } finally {
+      rmSync(directory, { recursive: true, force: true });
+    }
+  });
+
+  it("replaces a same-named Gitee asset when its content differs", async () => {
+    const directory = mkdtempSync(join(tmpdir(), "reprocore-gitee-replace-"));
+    try {
+      writeFileSync(join(directory, "artifact.tgz"), "expected");
+      const fetchMock = vi
+        .fn()
+        .mockResolvedValueOnce(
+          new Response(JSON.stringify({ id: 42 }), {
+            status: 200,
+            headers: { "Content-Type": "application/json" },
+          }),
+        )
+        .mockResolvedValueOnce(
+          new Response(JSON.stringify([{ id: 7, name: "artifact.tgz" }]), {
+            status: 200,
+            headers: { "Content-Type": "application/json" },
+          }),
+        )
+        .mockResolvedValueOnce(new Response("stale", { status: 200 }))
+        .mockResolvedValueOnce(new Response(null, { status: 204 }))
+        .mockResolvedValueOnce(
+          new Response(JSON.stringify({ id: 8 }), {
+            status: 201,
+            headers: { "Content-Type": "application/json" },
+          }),
+        );
+      await publishGiteeRelease(
+        {
+          GITEE_ACCESS_TOKEN: "test-token",
+          GITEE_OWNER: "owner",
+          GITEE_REPO: "repository",
+          GIT_TAG: "v0.1.0",
+          RELEASE_DIRECTORY: directory,
+        },
+        fetchMock,
+      );
+
+      expect(fetchMock).toHaveBeenCalledTimes(5);
+      expect(fetchMock.mock.calls[3]?.[1]?.method).toBe("DELETE");
+      expect(fetchMock.mock.calls[4]?.[1]?.method).toBe("POST");
     } finally {
       rmSync(directory, { recursive: true, force: true });
     }
