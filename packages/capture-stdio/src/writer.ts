@@ -16,6 +16,7 @@ import {
   summarizeValue,
 } from "@reprocore/format";
 import {
+  buildTransactions,
   createNormalizationState,
   normalizeMcpFrame,
   type NormalizationState,
@@ -48,6 +49,7 @@ export class CaptureWriter {
   #sequence = 0;
   #frameCount = 0;
   #eventCount = 0;
+  readonly #events: MinCaseEvent[] = [];
 
   public constructor(options: CaptureWriterOptions) {
     this.#includeContent = options.includeContent === true;
@@ -107,6 +109,7 @@ export class CaptureWriter {
       );
       if (normalized !== undefined) {
         this.#writeLine(this.#eventDescriptor, normalized.event);
+        this.#events.push(normalized.event);
         this.#eventCount += 1;
       }
     } else {
@@ -132,6 +135,7 @@ export class CaptureWriter {
     closeSync(this.#rawDescriptor);
     closeSync(this.#eventDescriptor);
     this.#closed = true;
+    const replayFixture = this.#writeReplayFixture(exitCode);
     writeFileSync(
       join(this.#outputDirectory, "capture.json"),
       `${JSON.stringify(
@@ -143,12 +147,56 @@ export class CaptureWriter {
           eventCount: this.#eventCount,
           exitCode,
           signal,
+          replayFixture,
         },
         null,
         2,
       )}\n`,
       { encoding: "utf8", flag: "wx" },
     );
+  }
+
+  #writeReplayFixture(exitCode: number): string | null {
+    if (
+      !this.#includeContent ||
+      (this.#state.protocolVersion !== "2025-11-25" &&
+        this.#state.protocolVersion !== "2026-07-28")
+    ) {
+      return null;
+    }
+    const exchanges = buildTransactions(this.#events).flatMap((transaction) => {
+      if (!transaction.complete) return [];
+      const request = transaction.events.find((event) =>
+        event.kind.startsWith("request:"),
+      )?.payload;
+      const response = transaction.events.find((event) =>
+        event.kind.startsWith("response:"),
+      )?.payload;
+      return typeof request === "object" &&
+        request !== null &&
+        typeof response === "object" &&
+        response !== null
+        ? [{ request, response }]
+        : [];
+    });
+    if (exchanges.length === 0) return null;
+    const filename = "replay.fixture.json";
+    writeFileSync(
+      join(this.#outputDirectory, filename),
+      `${JSON.stringify(
+        {
+          version: 1,
+          protocolVersion: this.#state.protocolVersion,
+          exchanges,
+          files: {},
+          observation: { exitCode },
+        },
+        null,
+        2,
+      )}\n`,
+      { encoding: "utf8", flag: "wx" },
+    );
+    return filename;
   }
 
   #writeLine(descriptor: number, value: unknown): void {

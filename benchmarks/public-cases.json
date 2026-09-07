@@ -1,0 +1,264 @@
+{
+  "version": 1,
+  "provenance": {
+    "repository": "modelcontextprotocol/servers",
+    "commit": "d73f99efbfd40c3aa1b61e88728b3d49fb52608f",
+    "license": "Apache-2.0 OR MIT",
+    "licenseUrl": "https://github.com/modelcontextprotocol/servers/blob/d73f99efbfd40c3aa1b61e88728b3d49fb52608f/LICENSE",
+    "notice": "These are original, synthetic ReproCore adaptations inspired by public server interfaces. No upstream source code or captured user data is included."
+  },
+  "cases": [
+    {
+      "id": "public-filesystem-wrong-target",
+      "upstreamComponent": "filesystem",
+      "sourceUrl": "https://github.com/modelcontextprotocol/servers/tree/d73f99efbfd40c3aa1b61e88728b3d49fb52608f/src/filesystem",
+      "license": "Apache-2.0 OR MIT",
+      "fixture": {
+        "version": 1,
+        "protocolVersion": "2025-11-25",
+        "exchanges": [
+          {
+            "request": {
+              "jsonrpc": "2.0",
+              "id": 1,
+              "method": "tools/call",
+              "params": {
+                "name": "write_file",
+                "arguments": { "path": "expected.md", "content": "example" }
+              }
+            },
+            "response": {
+              "jsonrpc": "2.0",
+              "id": 1,
+              "result": { "structuredContent": { "path": "wrong.md" } }
+            }
+          }
+        ],
+        "files": { "wrong.md": "example" },
+        "observation": { "effects": ["wrong_target_written"] }
+      },
+      "oracle": {
+        "version": 1,
+        "name": "filesystem-wrong-target",
+        "repeat": 3,
+        "mode": "all",
+        "timeoutMs": 10000,
+        "rules": [
+          {
+            "kind": "json_pointer",
+            "pointer": "/result/structuredContent/path",
+            "operator": "equals",
+            "value": "wrong.md"
+          },
+          { "kind": "forbidden_effect", "effect": "wrong_target_written" }
+        ]
+      }
+    },
+    {
+      "id": "public-memory-invalid-relation-shape",
+      "upstreamComponent": "memory",
+      "sourceUrl": "https://github.com/modelcontextprotocol/servers/tree/d73f99efbfd40c3aa1b61e88728b3d49fb52608f/src/memory",
+      "license": "Apache-2.0 OR MIT",
+      "fixture": {
+        "version": 1,
+        "protocolVersion": "2026-07-28",
+        "exchanges": [
+          {
+            "request": {
+              "jsonrpc": "2.0",
+              "id": "memory-1",
+              "method": "tools/call",
+              "params": { "name": "read_graph", "arguments": {} }
+            },
+            "response": {
+              "jsonrpc": "2.0",
+              "id": "memory-1",
+              "result": { "structuredContent": { "relations": "not-an-array" } }
+            }
+          }
+        ],
+        "files": {},
+        "observation": {}
+      },
+      "oracle": {
+        "version": 1,
+        "name": "memory-invalid-relation-shape",
+        "repeat": 3,
+        "mode": "all",
+        "timeoutMs": 10000,
+        "rules": [
+          {
+            "kind": "json_schema_invalid",
+            "schema": {
+              "type": "object",
+              "required": ["result"],
+              "properties": {
+                "result": {
+                  "type": "object",
+                  "required": ["structuredContent"],
+                  "properties": {
+                    "structuredContent": {
+                      "type": "object",
+                      "required": ["relations"],
+                      "properties": { "relations": { "type": "array" } }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        ]
+      }
+    },
+    {
+      "id": "public-sequential-thinking-counter-jump",
+      "upstreamComponent": "sequentialthinking",
+      "sourceUrl": "https://github.com/modelcontextprotocol/servers/tree/d73f99efbfd40c3aa1b61e88728b3d49fb52608f/src/sequentialthinking",
+      "license": "Apache-2.0 OR MIT",
+      "fixture": {
+        "version": 1,
+        "protocolVersion": "2026-07-28",
+        "exchanges": [
+          {
+            "request": {
+              "jsonrpc": "2.0",
+              "id": 3,
+              "method": "tools/call",
+              "params": {
+                "name": "sequentialthinking",
+                "arguments": {
+                  "thought": "example",
+                  "thoughtNumber": 2,
+                  "totalThoughts": 3
+                }
+              }
+            },
+            "response": {
+              "jsonrpc": "2.0",
+              "id": 3,
+              "result": { "structuredContent": { "thoughtNumber": 4 } }
+            }
+          }
+        ],
+        "files": {},
+        "observation": {}
+      },
+      "oracle": {
+        "version": 1,
+        "name": "sequential-thinking-counter-jump",
+        "repeat": 3,
+        "mode": "all",
+        "timeoutMs": 10000,
+        "rules": [
+          {
+            "kind": "json_pointer",
+            "pointer": "/result/structuredContent/thoughtNumber",
+            "operator": "equals",
+            "value": 4
+          }
+        ]
+      }
+    },
+    {
+      "id": "public-everything-structured-output-mismatch",
+      "upstreamComponent": "everything",
+      "sourceUrl": "https://github.com/modelcontextprotocol/servers/tree/d73f99efbfd40c3aa1b61e88728b3d49fb52608f/src/everything",
+      "license": "Apache-2.0 OR MIT",
+      "fixture": {
+        "version": 1,
+        "protocolVersion": "2026-07-28",
+        "exchanges": [
+          {
+            "request": {
+              "jsonrpc": "2.0",
+              "id": "everything-1",
+              "method": "tools/call",
+              "params": { "name": "getTinyImage", "arguments": {} }
+            },
+            "response": {
+              "jsonrpc": "2.0",
+              "id": "everything-1",
+              "result": { "structuredContent": { "width": "one" } }
+            }
+          }
+        ],
+        "files": {},
+        "observation": {}
+      },
+      "oracle": {
+        "version": 1,
+        "name": "everything-structured-output-mismatch",
+        "repeat": 3,
+        "mode": "all",
+        "timeoutMs": 10000,
+        "rules": [
+          {
+            "kind": "json_schema_invalid",
+            "schema": {
+              "type": "object",
+              "required": ["result"],
+              "properties": {
+                "result": {
+                  "type": "object",
+                  "required": ["structuredContent"],
+                  "properties": {
+                    "structuredContent": {
+                      "type": "object",
+                      "required": ["width"],
+                      "properties": { "width": { "type": "number" } }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        ]
+      }
+    },
+    {
+      "id": "public-time-timezone-mismatch",
+      "upstreamComponent": "time",
+      "sourceUrl": "https://github.com/modelcontextprotocol/servers/tree/d73f99efbfd40c3aa1b61e88728b3d49fb52608f/src/time",
+      "license": "Apache-2.0 OR MIT",
+      "fixture": {
+        "version": 1,
+        "protocolVersion": "2025-11-25",
+        "exchanges": [
+          {
+            "request": {
+              "jsonrpc": "2.0",
+              "id": "time-1",
+              "method": "tools/call",
+              "params": {
+                "name": "get_current_time",
+                "arguments": { "timezone": "Asia/Shanghai" }
+              }
+            },
+            "response": {
+              "jsonrpc": "2.0",
+              "id": "time-1",
+              "result": { "structuredContent": { "timezone": "Etc/UTC" } }
+            }
+          }
+        ],
+        "files": {},
+        "observation": {}
+      },
+      "oracle": {
+        "version": 1,
+        "name": "time-timezone-mismatch",
+        "repeat": 3,
+        "mode": "all",
+        "timeoutMs": 10000,
+        "rules": [
+          {
+            "kind": "json_pointer",
+            "pointer": "/result/structuredContent/timezone",
+            "operator": "equals",
+            "value": "Etc/UTC"
+          }
+        ]
+      }
+    }
+  ]
+}

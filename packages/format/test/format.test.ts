@@ -1,12 +1,28 @@
+import {
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  rmSync,
+  writeFileSync,
+} from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { describe, expect, it } from "vitest";
+import { stringify } from "yaml";
 import {
   assertSupportedFormatVersion,
   canonicalJson,
+  createDeterministicMinCaseZip,
+  InvalidMinCaseDirectoryError,
   MinCaseEventSchema,
+  parseJsonObject,
+  readMinCaseManifest,
   scanSecretCandidates,
   sha256,
   summarizeValue,
   UnsupportedFormatVersionError,
+  validateCaseName,
+  validateMinCaseDirectory,
 } from "../src/index.js";
 
 describe("format contracts", () => {
@@ -14,6 +30,9 @@ describe("format contracts", () => {
     expect(canonicalJson({ zebra: 1, alpha: [true, null] })).toBe(
       '{"alpha":[true,null],"zebra":1}',
     );
+    expect(parseJsonObject('{"ok":true}')).toEqual({ ok: true });
+    expect(parseJsonObject("[]")).toBeUndefined();
+    expect(parseJsonObject("not-json")).toBeUndefined();
   });
 
   it("rejects unknown format major versions", () => {
@@ -50,5 +69,75 @@ describe("format contracts", () => {
       expect.objectContaining({ kind: "api_key" }),
     ]);
     expect(scanSecretCandidates("ordinary text")).toHaveLength(0);
+  });
+
+  it("validates and creates deterministic portable case archives", () => {
+    const root = mkdtempSync(join(tmpdir(), "reprocore-format-"));
+    try {
+      const caseDirectory = join(root, "portable.mincase");
+      mkdirSync(join(caseDirectory, "fixtures"), { recursive: true });
+      const hash = `sha256:${"a".repeat(64)}`;
+      const manifest = {
+        formatVersion: "1.0.0",
+        name: "portable",
+        caseType: "executable",
+        minimality: "oneMinimal",
+        protocolProfile: {
+          id: "modern-2026-07-28",
+          protocolVersion: "2026-07-28",
+          lifecycle: "stateless",
+          initializeRequired: false,
+          discoveryMethod: "server/discover",
+          loggingTransport: "stderr",
+        },
+        originalTransactionCount: 10,
+        finalTransactionCount: 1,
+        originalFieldCount: 10,
+        finalFieldCount: 1,
+        oracleHash: hash,
+        fixtureHash: hash,
+        proofHash: hash,
+        traceHash: hash,
+        reducerSet: ["transaction-ddmin-v1"],
+        baseline: { repeat: 3, passed: 3 },
+        finalVerification: { repeat: 5, passed: 5 },
+        redactionVerified: true,
+        sensitivity: "metadata",
+        exportConfirmed: true,
+      };
+      const files: Record<string, string> = {
+        "manifest.yaml": stringify(manifest),
+        "oracle.yaml": "version: 1\n",
+        "package.json": "{}\n",
+        "provenance.json": "{}\n",
+        "redaction.yaml": "version: 1\n",
+        "report.html": "<!doctype html>\n",
+        "trace.jsonl": "{}\n",
+        "fixtures/replay.json": "{}\n",
+      };
+      for (const [path, content] of Object.entries(files)) {
+        writeFileSync(join(caseDirectory, path), content);
+      }
+
+      expect(validateCaseName("portable-case_1")).toBe("portable-case_1");
+      expect(() => validateCaseName("Invalid Name")).toThrow(
+        InvalidMinCaseDirectoryError,
+      );
+      expect(validateMinCaseDirectory(caseDirectory).size).toBe(8);
+      expect(readMinCaseManifest(caseDirectory).name).toBe("portable");
+      const zipPath = join(root, "nested", "portable.mincase.zip");
+      createDeterministicMinCaseZip(caseDirectory, zipPath);
+      expect(readFileSync(zipPath).length).toBeGreaterThan(0);
+
+      writeFileSync(join(caseDirectory, "raw-frames.jsonl"), "{}\n");
+      expect(() => validateMinCaseDirectory(caseDirectory)).toThrow(
+        "unexpected top-level entry",
+      );
+      expect(() => validateMinCaseDirectory(join(root, "not-a-case"))).toThrow(
+        "working case directory must end with .mincase",
+      );
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
   });
 });

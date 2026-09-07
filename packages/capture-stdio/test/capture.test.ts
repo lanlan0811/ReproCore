@@ -100,4 +100,40 @@ describe("stdio capture", () => {
       readFileSync(join(outputDirectory, "raw-frames.jsonl"), "utf8"),
     ).not.toContain("abcdefghijklmnop");
   });
+
+  it("writes a replay fixture for complete content-enabled exchanges", async () => {
+    const input = new PassThrough();
+    const outputDirectory = join(temporaryDirectory(), "fixture-session");
+    const fixturePath = fileURLToPath(
+      new URL("./fixtures/reply-server.mjs", import.meta.url),
+    );
+    const capture = captureProcess({
+      command: process.execPath,
+      args: [fixturePath],
+      outputDirectory,
+      includeContent: true,
+      input,
+      output: collector([]),
+      errorOutput: collector([]),
+    });
+    input.end(
+      `${JSON.stringify({
+        jsonrpc: "2.0",
+        id: "init-1",
+        method: "initialize",
+        params: { protocolVersion: "2026-07-28", capabilities: {} },
+      })}\n`,
+    );
+
+    await expect(capture).resolves.toEqual({ exitCode: 0, signal: null });
+    const replay = JSON.parse(
+      readFileSync(join(outputDirectory, "replay.fixture.json"), "utf8"),
+    ) as Record<string, unknown>;
+    expect(replay.protocolVersion).toBe("2026-07-28");
+    expect(replay.exchanges).toHaveLength(1);
+    const summary = JSON.parse(
+      readFileSync(join(outputDirectory, "capture.json"), "utf8"),
+    ) as Record<string, unknown>;
+    expect(summary.replayFixture).toBe("replay.fixture.json");
+  });
 });

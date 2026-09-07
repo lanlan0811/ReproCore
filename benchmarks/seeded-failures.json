@@ -1,0 +1,24 @@
+{
+  "version": 1,
+  "description": "Thirty deterministic synthetic MCP failures generated from these numeric seeds.",
+  "generator": "test/benchmark.test.ts",
+  "seeds": [
+    1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21,
+    22, 23, 24, 25, 26, 27, 28, 29, 30
+  ],
+  "oracleRotation": [
+    "process_exit",
+    "timeout",
+    "json_schema_invalid",
+    "file_hash",
+    "forbidden_tool",
+    "forbidden_effect"
+  ],
+  "acceptance": {
+    "seededFailureRetentionRate": 0.95,
+    "normalFalsePositiveRate": 0.05,
+    "medianTransactionReductionRate": 0.7,
+    "medianJsonFieldReductionRate": 0.5,
+    "maximumDurationMs": 600000
+  }
+}

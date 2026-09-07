@@ -10,6 +10,7 @@
     "node": ">=22.13.0"
   },
   "scripts": {
+    "benchmark": "vitest run test/benchmark.test.ts --reporter=verbose",
     "build": "tsc -b && pnpm bundle:cli",
     "bundle:cli": "esbuild packages/cli/src/cli.ts --bundle --platform=node --format=cjs --target=node22.13 --sourcemap --outfile=packages/cli/dist/cli.cjs",
     "clean": "tsc -b --clean",
@@ -19,7 +20,7 @@
     "pack:cli": "pnpm --filter reprocore pack --pack-destination release",
     "smoke:install": "node scripts/install-smoke.mjs release/reprocore-0.1.0.tgz",
     "test": "vitest run --passWithNoTests",
-    "test:coverage": "vitest run --coverage --passWithNoTests",
+    "test:coverage": "vitest run --coverage --passWithNoTests && node scripts/verify-coverage.mjs",
     "typecheck": "tsc -b --pretty false",
     "verify": "pnpm format:check && pnpm lint && pnpm typecheck && pnpm test"
   },
