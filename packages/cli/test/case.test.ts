@@ -336,7 +336,7 @@ describe("portable mincase packaging", () => {
     ).toMatchObject({ standaloneRegressionCompatible: false });
   });
 
-  it("refuses injected raw sessions, cache databases, and unknown entries", () => {
+  it("refuses missing files and unknown entries at every directory level", () => {
     const root = temporaryDirectory();
     const created = createMinCase({
       name: "blocked-export",
@@ -366,6 +366,21 @@ describe("portable mincase packaging", () => {
 
     rmSync(join(created.caseDirectory, "fixtures", "cache.sqlite"));
     writeFileSync(join(created.caseDirectory, "unexpected.txt"), "unexpected");
+    expect(() => verifyMinCase(created.caseDirectory)).toThrow(
+      InvalidMinCaseDirectoryError,
+    );
+
+    rmSync(join(created.caseDirectory, "unexpected.txt"));
+    writeFileSync(
+      join(created.caseDirectory, "runner", "unexpected.txt"),
+      "unexpected",
+    );
+    expect(() => verifyMinCase(created.caseDirectory)).toThrow(
+      InvalidMinCaseDirectoryError,
+    );
+
+    rmSync(join(created.caseDirectory, "runner", "unexpected.txt"));
+    rmSync(join(created.caseDirectory, "runner", "regression.test.mjs"));
     expect(() => verifyMinCase(created.caseDirectory)).toThrow(
       InvalidMinCaseDirectoryError,
     );

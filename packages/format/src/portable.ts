@@ -16,15 +16,18 @@ const REQUIRED_CASE_FILES = [
   "redaction.yaml",
   "report.html",
   "trace.jsonl",
+  "artifacts/proof.json",
+  "fixtures/replay.json",
+  "runner/oracle.json",
+  "runner/regression.test.mjs",
+  "runner/replay-server.mjs",
+  "schemas/replay-fixture.schema.json",
 ] as const;
 
-const ALLOWED_TOP_LEVEL = new Set([
-  ...REQUIRED_CASE_FILES,
-  "artifacts",
-  "fixtures",
-  "runner",
-  "schemas",
-]);
+const ALLOWED_CASE_FILES = new Set<string>(REQUIRED_CASE_FILES);
+const ALLOWED_TOP_LEVEL = new Set(
+  REQUIRED_CASE_FILES.map((path) => path.split("/", 1)[0]),
+);
 
 const FORBIDDEN_EXPORT_NAMES = [
   /^raw-frames\.jsonl$/iu,
@@ -105,6 +108,11 @@ export function validateMinCaseDirectory(
     }
   }
   const files = collectCaseFiles(root);
+  for (const path of files.keys()) {
+    if (!ALLOWED_CASE_FILES.has(path)) {
+      throw new InvalidMinCaseDirectoryError(`unexpected case file: ${path}`);
+    }
+  }
   for (const required of REQUIRED_CASE_FILES) {
     if (!files.has(required)) {
       throw new InvalidMinCaseDirectoryError(

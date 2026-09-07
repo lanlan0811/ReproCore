@@ -6,7 +6,7 @@ import {
   writeFileSync,
 } from "node:fs";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
 import { describe, expect, it } from "vitest";
 import { stringify } from "yaml";
 import {
@@ -75,7 +75,7 @@ describe("format contracts", () => {
     const root = mkdtempSync(join(tmpdir(), "reprocore-format-"));
     try {
       const caseDirectory = join(root, "portable.mincase");
-      mkdirSync(join(caseDirectory, "fixtures"), { recursive: true });
+      mkdirSync(caseDirectory, { recursive: true });
       const hash = `sha256:${"a".repeat(64)}`;
       const manifest = {
         formatVersion: "1.0.0",
@@ -113,17 +113,24 @@ describe("format contracts", () => {
         "redaction.yaml": "version: 1\n",
         "report.html": "<!doctype html>\n",
         "trace.jsonl": "{}\n",
+        "artifacts/proof.json": "{}\n",
         "fixtures/replay.json": "{}\n",
+        "runner/oracle.json": "{}\n",
+        "runner/regression.test.mjs": "// regression\n",
+        "runner/replay-server.mjs": "// replay\n",
+        "schemas/replay-fixture.schema.json": "{}\n",
       };
       for (const [path, content] of Object.entries(files)) {
-        writeFileSync(join(caseDirectory, path), content);
+        const target = join(caseDirectory, path);
+        mkdirSync(dirname(target), { recursive: true });
+        writeFileSync(target, content);
       }
 
       expect(validateCaseName("portable-case_1")).toBe("portable-case_1");
       expect(() => validateCaseName("Invalid Name")).toThrow(
         InvalidMinCaseDirectoryError,
       );
-      expect(validateMinCaseDirectory(caseDirectory).size).toBe(8);
+      expect(validateMinCaseDirectory(caseDirectory).size).toBe(13);
       expect(readMinCaseManifest(caseDirectory).name).toBe("portable");
       const zipPath = join(root, "nested", "portable.mincase.zip");
       createDeterministicMinCaseZip(caseDirectory, zipPath);
@@ -132,6 +139,16 @@ describe("format contracts", () => {
       writeFileSync(join(caseDirectory, "raw-frames.jsonl"), "{}\n");
       expect(() => validateMinCaseDirectory(caseDirectory)).toThrow(
         "unexpected top-level entry",
+      );
+      rmSync(join(caseDirectory, "raw-frames.jsonl"));
+      writeFileSync(join(caseDirectory, "runner", "unexpected.txt"), "x");
+      expect(() => validateMinCaseDirectory(caseDirectory)).toThrow(
+        "unexpected case file",
+      );
+      rmSync(join(caseDirectory, "runner", "unexpected.txt"));
+      rmSync(join(caseDirectory, "runner", "regression.test.mjs"));
+      expect(() => validateMinCaseDirectory(caseDirectory)).toThrow(
+        "required case file is missing",
       );
       expect(() => validateMinCaseDirectory(join(root, "not-a-case"))).toThrow(
         "working case directory must end with .mincase",

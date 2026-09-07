@@ -81,5 +81,6 @@ case use `/`.
 - Unknown format major version: reject.
 - Unknown or extra Schema fields in a known major version: reject.
 - Unknown MCP protocol version: reject without silent upgrade.
+- Missing standard files or unlisted files at any directory level: reject.
 - Content-hash mismatch: reject verification and replay.
 - Failed safety proof: do not create a public ZIP.
