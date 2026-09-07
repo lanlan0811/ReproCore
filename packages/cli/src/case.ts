@@ -28,7 +28,12 @@ import {
   type ReplayFixture,
 } from "@reprocore/replay";
 import { stringify } from "yaml";
-import { SafetyBlockedError, VERSION } from "./index.js";
+import {
+  CliInputError,
+  SafetyBlockedError,
+  VerificationError,
+  VERSION,
+} from "./index.js";
 
 interface ProofSummary {
   originalTransactionCount: number;
@@ -64,14 +69,14 @@ export interface VerifyCaseResult {
 
 function requireNumber(value: unknown, name: string): number {
   if (typeof value !== "number" || !Number.isFinite(value) || value < 0) {
-    throw new Error(`Invalid proof field: ${name}`);
+    throw new CliInputError(`Invalid proof field: ${name}`);
   }
   return value;
 }
 
 function proofSummary(proof: unknown): ProofSummary {
   if (typeof proof !== "object" || proof === null)
-    throw new Error("Invalid minimization proof");
+    throw new CliInputError("Invalid minimization proof");
   const root = proof as Record<string, unknown>;
   const transaction =
     typeof root.transaction === "object" && root.transaction !== null
@@ -243,7 +248,7 @@ export function createMinCase(options: CreateCaseOptions): CreatedCase {
   const name = validateCaseName(options.name);
   const caseDirectory = resolve(options.caseDirectory);
   if (basename(caseDirectory) !== `${name}.mincase`) {
-    throw new Error(`case directory must be named ${name}.mincase`);
+    throw new CliInputError(`case directory must be named ${name}.mincase`);
   }
   const fixture = JSON.stringify(options.fixture, null, 2) + "\n";
   const oracle = stringify(OracleDocumentSchema.parse(options.oracle));
@@ -391,16 +396,16 @@ export function verifyMinCase(
   const proofPath = join(root, "artifacts", "proof.json");
   const tracePath = join(root, "trace.jsonl");
   if (sha256(readFileSync(fixturePath)) !== manifest.fixtureHash) {
-    throw new Error("Fixture hash does not match manifest");
+    throw new VerificationError("Fixture hash does not match manifest");
   }
   if (sha256(readFileSync(oraclePath)) !== manifest.oracleHash) {
-    throw new Error("Oracle hash does not match manifest");
+    throw new VerificationError("Oracle hash does not match manifest");
   }
   if (sha256(readFileSync(proofPath)) !== manifest.proofHash) {
-    throw new Error("Proof hash does not match manifest");
+    throw new VerificationError("Proof hash does not match manifest");
   }
   if (sha256(readFileSync(tracePath)) !== manifest.traceHash) {
-    throw new Error("Trace hash does not match manifest");
+    throw new VerificationError("Trace hash does not match manifest");
   }
   const fixture = readReplayFixture(fixturePath);
   const oracle = readOracleDocument(oraclePath);

@@ -15,3 +15,17 @@ export class SafetyBlockedError extends Error {
     this.name = "SafetyBlockedError";
   }
 }
+
+export class CliInputError extends Error {
+  public constructor(message: string) {
+    super(message);
+    this.name = "CliInputError";
+  }
+}
+
+export class VerificationError extends Error {
+  public constructor(message: string) {
+    super(message);
+    this.name = "VerificationError";
+  }
+}

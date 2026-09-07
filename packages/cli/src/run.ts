@@ -35,7 +35,13 @@ import {
   type ReplayFixture,
   verifyBaseline,
 } from "@reprocore/replay";
-import { EXIT_CODES, SafetyBlockedError, VERSION } from "./index.js";
+import {
+  CliInputError,
+  EXIT_CODES,
+  SafetyBlockedError,
+  VerificationError,
+  VERSION,
+} from "./index.js";
 import { createMinCase, verifyMinCase } from "./case.js";
 import { minimizeFixtureJson } from "./minimize-fixture.js";
 import { parse } from "yaml";
@@ -68,7 +74,7 @@ Commands:
 Options:
   -h, --help         Show this help
   -v, --version      Show the version
-  --json             Emit the command summary as JSON on stderr
+  --json             Emit a JSON command summary (capture uses stderr)
   --confirm-export   Confirm creation of a portable, redacted export
 `;
 
@@ -143,7 +149,7 @@ function writeResult(
 function parseCaptureArguments(args: string[]): CaptureArguments {
   const separator = args.indexOf("--");
   if (separator < 0 || separator === args.length - 1) {
-    throw new Error("capture requires `-- <server> [args...]`");
+    throw new CliInputError("capture requires `-- <server> [args...]`");
   }
   const options = args.slice(0, separator);
   const server = args.slice(separator + 1);
@@ -159,14 +165,14 @@ function parseCaptureArguments(args: string[]): CaptureArguments {
       outputDirectory = options[index + 1];
       index += 1;
     } else {
-      throw new Error(`Unknown capture option: ${option ?? ""}`);
+      throw new CliInputError(`Unknown capture option: ${option ?? ""}`);
     }
   }
   if (outputDirectory === undefined)
-    throw new Error("capture requires --out <directory>");
+    throw new CliInputError("capture requires --out <directory>");
   const command = server[0];
   if (command === undefined)
-    throw new Error("capture server command is missing");
+    throw new CliInputError("capture server command is missing");
   return {
     command,
     commandArguments: server.slice(1),
@@ -230,7 +236,7 @@ export async function runCli(
       const commandArgs = args.slice(2);
       const outputPath = optionValue(commandArgs, "--out");
       if (outputPath === undefined)
-        throw new Error("oracle init requires --out <oracle.yaml>");
+        throw new CliInputError("oracle init requires --out <oracle.yaml>");
       const name = optionValue(commandArgs, "--name") ?? "reprocore-failure";
       const resolvedPath = resolve(outputPath);
       writeOracleDocument(resolvedPath, createOracleTemplate(name));
@@ -248,7 +254,7 @@ export async function runCli(
       const fixturePath = optionValue(commandArgs, "--fixture");
       const oraclePath = optionValue(commandArgs, "--oracle");
       if (fixturePath === undefined || oraclePath === undefined) {
-        throw new Error(
+        throw new CliInputError(
           "replay requires --fixture <fixture.json> and --oracle <oracle.yaml>",
         );
       }
@@ -259,7 +265,9 @@ export async function runCli(
           ? oracle.repeat
           : Number.parseInt(repeatText, 10);
       if (!Number.isInteger(repeat) || repeat < 1 || repeat > 100) {
-        throw new Error("--repeat must be an integer between 1 and 100");
+        throw new CliInputError(
+          "--repeat must be an integer between 1 and 100",
+        );
       }
       const baseline = verifyBaseline(
         readReplayFixture(resolve(fixturePath)),
@@ -287,7 +295,7 @@ export async function runCli(
         oraclePath === undefined ||
         outputPath === undefined
       ) {
-        throw new Error(
+        throw new CliInputError(
           "minimize requires --fixture <fixture.json>, --oracle <oracle.yaml>, and --out <fixture.json>",
         );
       }
@@ -311,10 +319,10 @@ export async function runCli(
           ? 10 * 60 * 1_000
           : Number.parseInt(maxDurationText, 10);
       if (!Number.isInteger(maxTests) || maxTests < 1) {
-        throw new Error("--budget-tests must be a positive integer");
+        throw new CliInputError("--budget-tests must be a positive integer");
       }
       if (!Number.isInteger(maxDurationMs) || maxDurationMs < 1) {
-        throw new Error("--budget-ms must be a positive integer");
+        throw new CliInputError("--budget-ms must be a positive integer");
       }
 
       using cache = new CandidateCache(
@@ -426,12 +434,12 @@ export async function runCli(
         proofPath === undefined ||
         outputPath === undefined
       ) {
-        throw new Error(
+        throw new CliInputError(
           "pack requires --fixture, --oracle, --proof, and --out <name.mincase.zip>",
         );
       }
       if (!outputPath.endsWith(".mincase.zip")) {
-        throw new Error("pack output must end with .mincase.zip");
+        throw new CliInputError("pack output must end with .mincase.zip");
       }
       if (!commandArgs.includes("--confirm-export")) {
         throw new SafetyBlockedError(
@@ -488,7 +496,7 @@ export async function runCli(
       const commandArgs = args.slice(1);
       const casePath = optionValue(commandArgs, "--case");
       if (casePath === undefined)
-        throw new Error("report requires --case <name.mincase>");
+        throw new CliInputError("report requires --case <name.mincase>");
       const caseDirectory = resolve(casePath);
       const outputPath = resolve(
         optionValue(commandArgs, "--out") ?? join(caseDirectory, "report.html"),
@@ -520,7 +528,7 @@ export async function runCli(
       const commandArgs = args.slice(2);
       const target = commandArgs.find((argument) => !argument.startsWith("-"));
       if (target === undefined)
-        throw new Error("redact --check requires <path>");
+        throw new CliInputError("redact --check requires <path>");
       const findings = scanPath(resolve(target));
       const summary = {
         checked: resolve(target),
@@ -543,12 +551,14 @@ export async function runCli(
       const commandArgs = args.slice(1);
       const caseDirectory = optionValue(commandArgs, "--case");
       if (caseDirectory === undefined)
-        throw new Error("verify requires --case <name.mincase>");
+        throw new CliInputError("verify requires --case <name.mincase>");
       const repeatText = optionValue(commandArgs, "--repeat");
       const repeat =
         repeatText === undefined ? 5 : Number.parseInt(repeatText, 10);
       if (!Number.isInteger(repeat) || repeat < 1 || repeat > 100) {
-        throw new Error("--repeat must be an integer between 1 and 100");
+        throw new CliInputError(
+          "--repeat must be an integer between 1 and 100",
+        );
       }
       const verification = verifyMinCase(resolve(caseDirectory), repeat);
       writeResult(
@@ -560,18 +570,35 @@ export async function runCli(
       return verification.valid ? EXIT_CODES.success : EXIT_CODES.unresolved;
     }
 
-    io.stderr.write(`Unknown command: ${command}\n`);
+    io.stderr.write(
+      args.includes("--json")
+        ? `${JSON.stringify({ error: `Unknown command: ${command}`, exitCode: EXIT_CODES.usage })}\n`
+        : `Unknown command: ${command}\n`,
+    );
     return EXIT_CODES.usage;
   } catch (error) {
     const safetyBlocked =
       error instanceof SensitiveContentError ||
       error instanceof SafetyBlockedError;
+    const inputError =
+      error instanceof CliInputError ||
+      error instanceof SyntaxError ||
+      (error instanceof Error &&
+        (error.name === "ZodError" || error.name === "YAMLParseError"));
+    const exitCode = safetyBlocked
+      ? EXIT_CODES.safetyBlocked
+      : error instanceof VerificationError
+        ? EXIT_CODES.unresolved
+        : inputError
+          ? EXIT_CODES.usage
+          : EXIT_CODES.executionFailure;
     io.stderr.write(
       `${JSON.stringify({
         error: error instanceof Error ? error.message : String(error),
         safetyBlocked,
+        exitCode,
       })}\n`,
     );
-    return safetyBlocked ? EXIT_CODES.safetyBlocked : EXIT_CODES.usage;
+    return exitCode;
   }
 }

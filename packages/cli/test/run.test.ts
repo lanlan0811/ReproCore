@@ -155,6 +155,24 @@ describe("CLI safety boundary", () => {
     );
     expect(reportExitCode).toBe(EXIT_CODES.success);
     expect(readFileSync(reportPath, "utf8")).toContain("default-src 'none'");
+
+    const verifyExitCode = await runCli(
+      ["verify", "--case", caseDirectory, "--json"],
+      captured.io,
+    );
+    expect(verifyExitCode).toBe(EXIT_CODES.success);
+
+    writeFileSync(join(caseDirectory, "fixtures", "replay.json"), "{}\n");
+    const tamperedIo = captureIo();
+    const tamperedExitCode = await runCli(
+      ["verify", "--case", caseDirectory, "--json"],
+      tamperedIo.io,
+    );
+    expect(tamperedExitCode).toBe(EXIT_CODES.unresolved);
+    expect(JSON.parse(tamperedIo.stderr.join(""))).toMatchObject({
+      exitCode: EXIT_CODES.unresolved,
+      safetyBlocked: false,
+    });
   });
 
   it("returns the safety-blocked exit code for a risky attachment", async () => {
@@ -170,5 +188,36 @@ describe("CLI safety boundary", () => {
 
     expect(exitCode).toBe(EXIT_CODES.safetyBlocked);
     expect(captured.stdout.join("")).toContain("unscanned_attachment");
+  });
+
+  it("distinguishes usage errors from runtime execution failures", async () => {
+    const usageIo = captureIo();
+    const usageExitCode = await runCli(
+      ["verify", "--case", "missing.mincase", "--repeat", "0", "--json"],
+      usageIo.io,
+    );
+    expect(usageExitCode).toBe(EXIT_CODES.usage);
+    expect(JSON.parse(usageIo.stderr.join(""))).toMatchObject({
+      exitCode: EXIT_CODES.usage,
+      safetyBlocked: false,
+    });
+
+    const executionIo = captureIo();
+    const executionExitCode = await runCli(
+      ["verify", "--case", "missing.mincase", "--json"],
+      executionIo.io,
+    );
+    expect(executionExitCode).toBe(EXIT_CODES.executionFailure);
+    expect(JSON.parse(executionIo.stderr.join(""))).toMatchObject({
+      exitCode: EXIT_CODES.executionFailure,
+      safetyBlocked: false,
+    });
+
+    const unknownIo = captureIo();
+    const unknownExitCode = await runCli(["unknown", "--json"], unknownIo.io);
+    expect(unknownExitCode).toBe(EXIT_CODES.usage);
+    expect(JSON.parse(unknownIo.stderr.join(""))).toMatchObject({
+      exitCode: EXIT_CODES.usage,
+    });
   });
 });
