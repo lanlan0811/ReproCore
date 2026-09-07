@@ -1,4 +1,10 @@
-import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import {
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  rmSync,
+  writeFileSync,
+} from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { Writable } from "node:stream";
@@ -218,6 +224,25 @@ describe("CLI safety boundary", () => {
     expect(unknownExitCode).toBe(EXIT_CODES.usage);
     expect(JSON.parse(unknownIo.stderr.join(""))).toMatchObject({
       exitCode: EXIT_CODES.usage,
+    });
+  });
+
+  it("rejects an imported case with an unexpected top-level file", async () => {
+    const root = temporaryDirectory();
+    const caseDirectory = join(root, "unsafe.mincase");
+    mkdirSync(caseDirectory);
+    writeFileSync(join(caseDirectory, "unexpected.txt"), "unexpected");
+    const captured = captureIo();
+
+    const exitCode = await runCli(
+      ["verify", "--case", caseDirectory, "--json"],
+      captured.io,
+    );
+
+    expect(exitCode).toBe(EXIT_CODES.usage);
+    expect(JSON.parse(captured.stderr.join(""))).toMatchObject({
+      exitCode: EXIT_CODES.usage,
+      safetyBlocked: false,
     });
   });
 });

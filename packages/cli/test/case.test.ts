@@ -1,4 +1,11 @@
-import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import {
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  rmSync,
+  symlinkSync,
+  writeFileSync,
+} from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { spawnSync } from "node:child_process";
@@ -165,7 +172,7 @@ describe("portable mincase packaging", () => {
     );
   });
 
-  it("refuses raw sessions and cache databases", () => {
+  it("refuses injected raw sessions, cache databases, and unknown entries", () => {
     const root = temporaryDirectory();
     const created = createMinCase({
       name: "blocked-export",
@@ -183,5 +190,41 @@ describe("portable mincase packaging", () => {
         join(root, "should-not-exist.mincase.zip"),
       ),
     ).toThrow(InvalidMinCaseDirectoryError);
+    expect(() => verifyMinCase(created.caseDirectory)).toThrow(
+      InvalidMinCaseDirectoryError,
+    );
+
+    rmSync(join(created.caseDirectory, "raw-frames.jsonl"));
+    writeFileSync(join(created.caseDirectory, "fixtures", "cache.sqlite"), "");
+    expect(() => verifyMinCase(created.caseDirectory)).toThrow(
+      InvalidMinCaseDirectoryError,
+    );
+
+    rmSync(join(created.caseDirectory, "fixtures", "cache.sqlite"));
+    writeFileSync(join(created.caseDirectory, "unexpected.txt"), "unexpected");
+    expect(() => verifyMinCase(created.caseDirectory)).toThrow(
+      InvalidMinCaseDirectoryError,
+    );
+  });
+
+  it("refuses a symbolic link injected into an imported case", () => {
+    const root = temporaryDirectory();
+    const created = createMinCase({
+      name: "symlink-export",
+      caseDirectory: join(root, "symlink-export.mincase"),
+      outputZip: join(root, "symlink-export.mincase.zip"),
+      ...inputs(),
+    });
+    const outside = join(root, "outside");
+    mkdirSync(outside);
+    symlinkSync(
+      outside,
+      join(created.caseDirectory, "fixtures", "link"),
+      process.platform === "win32" ? "junction" : "dir",
+    );
+
+    expect(() => verifyMinCase(created.caseDirectory)).toThrow(
+      InvalidMinCaseDirectoryError,
+    );
   });
 });

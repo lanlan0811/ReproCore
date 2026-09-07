@@ -7,6 +7,7 @@ import {
   readMinCaseManifest,
   sha256,
   validateCaseName,
+  validateMinCaseDirectory,
   type MinCaseManifest,
   type Minimality,
 } from "@reprocore/format";
@@ -390,6 +391,7 @@ export function verifyMinCase(
   repeat = 5,
 ): VerifyCaseResult {
   const root = resolve(caseDirectory);
+  validateMinCaseDirectory(root);
   const manifest = readMinCaseManifest(root);
   const fixturePath = join(root, "fixtures", "replay.json");
   const oraclePath = join(root, "oracle.yaml");

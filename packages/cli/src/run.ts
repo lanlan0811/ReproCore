@@ -5,7 +5,12 @@ import {
   captureProcess,
   SensitiveContentError,
 } from "@reprocore/capture-stdio";
-import { readMinCaseManifest, sha256, type JsonValue } from "@reprocore/format";
+import {
+  readMinCaseManifest,
+  sha256,
+  validateMinCaseDirectory,
+  type JsonValue,
+} from "@reprocore/format";
 import {
   CandidateCache,
   minimizeTransactions,
@@ -498,6 +503,7 @@ export async function runCli(
       if (casePath === undefined)
         throw new CliInputError("report requires --case <name.mincase>");
       const caseDirectory = resolve(casePath);
+      validateMinCaseDirectory(caseDirectory);
       const outputPath = resolve(
         optionValue(commandArgs, "--out") ?? join(caseDirectory, "report.html"),
       );
@@ -584,7 +590,9 @@ export async function runCli(
       error instanceof CliInputError ||
       error instanceof SyntaxError ||
       (error instanceof Error &&
-        (error.name === "ZodError" || error.name === "YAMLParseError"));
+        (error.name === "ZodError" ||
+          error.name === "YAMLParseError" ||
+          error.name === "InvalidMinCaseDirectoryError"));
     const exitCode = safetyBlocked
       ? EXIT_CODES.safetyBlocked
       : error instanceof VerificationError
