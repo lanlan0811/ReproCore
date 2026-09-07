@@ -59,24 +59,30 @@ effect 和隔离 custom script 规则。
 ## `replay`
 
 ```bash
-reprocore replay --fixture <fixture.json> --oracle <oracle.yaml> [--repeat <1..100>] [--json]
+reprocore replay --fixture <fixture.json> --oracle <oracle.yaml> [--repeat <1..100>] \
+  [--docker-image <name@sha256:digest>] [--timeout-ms <milliseconds>] [--json]
 ```
 
 固定响应重放，不启动真实 server。默认重复次数来自 Oracle；缩减前建议 3 次。只要
 任一次不再满足 Oracle，就返回退出码 5，防止对抖动失败给出虚假最小化结果。
+`custom_script` Oracle 必须提供固定 SHA-256 digest 的 Docker 镜像；ReproCore 将候选
+fixture JSON 通过 stdin 传给容器，并采用 Oracle 的超时或显式 `--timeout-ms`，绝不
+回退到本机执行脚本。
 
 ## `minimize`
 
 ```bash
 reprocore minimize --fixture <fixture.json> --oracle <oracle.yaml> \
   --out <fixture.json> [--proof <proof.json>] \
-  [--cache <cache.sqlite>] [--budget-tests <count>] [--budget-ms <milliseconds>] [--json]
+  [--cache <cache.sqlite>] [--budget-tests <count>] [--budget-ms <milliseconds>] \
+  [--docker-image <name@sha256:digest>] [--timeout-ms <milliseconds>] [--json]
 ```
 
 先做事务依赖闭包与 ddmin，再执行 Schema 感知的字段缩减和未使用工具定义删除。
 默认最多 10,000 次测试和 10 分钟。完成单项删除检查才报告 `oneMinimal`；达到预算
 则返回退出码 4 并标记 `budgetExhausted`。proof ledger 记录候选哈希、结果、耗时与
-缓存命中，不记录凭据明文。
+缓存命中，不记录凭据明文。使用 `custom_script` 时，每个候选都在指定 Docker 镜像中
+判定，镜像 digest 与超时也进入缓存命名空间，避免跨执行环境复用错误结果。
 
 ## `redact --check`
 

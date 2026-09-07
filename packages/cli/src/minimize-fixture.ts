@@ -1,4 +1,11 @@
-import { sha256, type JsonValue, type Minimality } from "@reprocore/format";
+import {
+  canonicalJson,
+  sha256,
+  type CandidateResult,
+  type JsonValue,
+  type Minimality,
+} from "@reprocore/format";
+import { isDeepStrictEqual } from "node:util";
 import {
   measureJson,
   minimizeJson,
@@ -15,6 +22,8 @@ import {
 
 export interface FixtureJsonReductionOptions {
   cache?: CandidateCacheLike;
+  evaluate?: (fixture: ReplayFixture) => Promise<CandidateResult>;
+  evaluationIdentity?: string;
   maxTests: number;
   maxDurationMs: number;
 }
@@ -154,15 +163,27 @@ export async function minimizeFixtureJson(
   const ledgers: JsonProofLedgerEntry[][] = [];
   let testCount = 0;
   let minimality: Minimality = "oneMinimal";
+  const evaluate =
+    options.evaluate ??
+    (async (fixture: ReplayFixture) =>
+      evaluateOracle(oracle, runFixtureReplay(fixture).observation).result);
 
   for (let index = 0; index < fixture.exchanges.length; index += 1) {
+    if (
+      testCount >= options.maxTests ||
+      Date.now() - startedAt >= options.maxDurationMs
+    ) {
+      minimality = "budgetExhausted";
+      break;
+    }
     const exchange = fixture.exchanges[index]!;
     const isDiscovery =
       exchange.request.method === "tools/list" ||
       exchange.request.method === "server/discover";
+    const originalResponse = asJsonValue(exchange.response);
     const prunedResponse = isDiscovery
-      ? removeUnusedToolDefinitions(asJsonValue(exchange.response), tools)
-      : asJsonValue(exchange.response);
+      ? removeUnusedToolDefinitions(originalResponse, tools)
+      : originalResponse;
     const prunedFixture = ReplayFixtureSchema.parse({
       ...fixture,
       exchanges: fixture.exchanges.map((entry, candidateIndex) =>
@@ -171,17 +192,52 @@ export async function minimizeFixtureJson(
           : entry,
       ),
     });
-    const response =
-      evaluateOracle(oracle, runFixtureReplay(prunedFixture).observation)
-        .result === "INTERESTING"
-        ? prunedResponse
-        : asJsonValue(exchange.response);
+    const preLedger: JsonProofLedgerEntry[] = [];
+    let response = originalResponse;
+    if (isDiscovery && !isDeepStrictEqual(prunedResponse, originalResponse)) {
+      const candidateHash = sha256(
+        `${options.evaluationIdentity ?? "fixed-response-v1"}\nunused-tools-v1\n${canonicalJson(
+          asJsonValue({ fixture: prunedFixture, oracle }),
+        )}`,
+      );
+      const cached = options.cache?.get(candidateHash);
+      let candidateResult: CandidateResult;
+      let durationMs: number;
+      if (cached === undefined) {
+        const began = Date.now();
+        candidateResult = await evaluate(prunedFixture);
+        durationMs = Date.now() - began;
+        testCount += 1;
+        options.cache?.set(candidateHash, {
+          result: candidateResult,
+          durationMs,
+        });
+      } else {
+        candidateResult = cached.result;
+        durationMs = cached.durationMs;
+      }
+      preLedger.push({
+        candidateHash,
+        operation: "remove-unused-tools",
+        path: "/response/result/tools",
+        result: candidateResult,
+        valid: true,
+        durationMs,
+        cacheHit: cached !== undefined,
+      });
+      if (candidateResult === "INTERESTING") response = prunedResponse;
+    }
     const initial = {
       request: asJsonValue(exchange.request),
       response,
     } satisfies JsonValue;
     const elapsed = Date.now() - startedAt;
     if (testCount >= options.maxTests || elapsed >= options.maxDurationMs) {
+      fixture.exchanges[index] = {
+        request: exchange.request,
+        response: response as ReplayFixture["exchanges"][number]["response"],
+      };
+      ledgers.push(preLedger);
       minimality = "budgetExhausted";
       break;
     }
@@ -202,6 +258,7 @@ export async function minimizeFixtureJson(
           oracle,
           stage: "json-v1",
           exchange: index,
+          evaluationIdentity: options.evaluationIdentity ?? "fixed-response-v1",
         }),
       ),
       test: async (candidate) => {
@@ -215,14 +272,11 @@ export async function minimizeFixtureJson(
           ),
         });
         if (!candidateFixture.success) return "UNRESOLVED";
-        return evaluateOracle(
-          oracle,
-          runFixtureReplay(candidateFixture.data).observation,
-        ).result;
+        return evaluate(candidateFixture.data);
       },
     });
     testCount += reduction.testCount;
-    ledgers.push(reduction.ledger);
+    ledgers.push([...preLedger, ...reduction.ledger]);
     if (reduction.minimality === "budgetExhausted")
       minimality = "budgetExhausted";
     const container = reduction.value as {

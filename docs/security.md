@@ -39,14 +39,15 @@ private key 和常见 token 形态在写入每帧前扫描。导出时，fixture
 Docker 后端用于更高风险输入，参数固定包含无网络、非 root、只读根文件系统、受限
 CPU/内存/PID 与受限临时文件系统。后端拒绝没有固定 SHA-256 digest 的镜像；使用者仍
 需完成镜像供应链审核。后端把正常完成的隔离进程退出码作为 custom script Oracle 的
-观察值，超时则保持 `UNRESOLVED`；它只保留调用、stdout 和 stderr 的 SHA-256 审计摘要，
-不把输出内容写入案例包。
+观察值；候选 fixture 仅通过 stdin 输入，不挂载宿主目录。超时或输出超过采集上限时
+保持 `UNRESOLVED`；后端会按随机容器名执行强制删除，删除失败即报错。它只保留调用、
+stdout 和 stderr 的 SHA-256 审计摘要，不把输出内容写入案例包。
 
 ## 报告与导入包
 
 报告转义所有不可信字段，无 JavaScript，CSP 默认为 `default-src 'none'`。视觉标记
-使用内联 SVG。`.mincase` 验证器拒绝意外顶层文件、符号链接、数据库、原始帧和未知
-格式主版本，并检查关键内容哈希。
+使用内联 SVG。`.mincase` 验证器拒绝任意目录层级的清单外文件、符号链接、数据库、
+原始帧和未知格式主版本，并检查全部标准制品哈希。
 
 不要双击或直接执行未知包中的其他文件。先解压到隔离目录，检查 manifest 和
 redaction proof，运行 `reprocore verify`；对于来源不明或包含 custom script 的

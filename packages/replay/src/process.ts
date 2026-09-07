@@ -5,6 +5,7 @@ const DEFAULT_OUTPUT_LIMIT = 1024 * 1024;
 export interface ChildExecutionOptions {
   cwd?: string;
   env?: NodeJS.ProcessEnv;
+  input?: string | Uint8Array;
   timeoutMs: number;
   outputLimitBytes?: number;
 }
@@ -13,6 +14,7 @@ export interface ChildExecutionResult {
   exitCode: number;
   signal: NodeJS.Signals | null;
   timedOut: boolean;
+  outputLimitExceeded: boolean;
   durationMs: number;
   stdout: Buffer;
   stderr: Buffer;
@@ -59,24 +61,34 @@ export async function runChildProcess(
     detached: process.platform !== "win32",
     shell: false,
     windowsHide: true,
-    stdio: ["ignore", "pipe", "pipe"],
+    stdio: [options.input === undefined ? "ignore" : "pipe", "pipe", "pipe"],
   });
+  if (child.stdin !== null) {
+    child.stdin.on("error", () => {
+      // The child may intentionally exit before consuming the whole input.
+    });
+    child.stdin.end(options.input);
+  }
   const stdout: Buffer[] = [];
   const stderr: Buffer[] = [];
   const outputLimit = options.outputLimitBytes ?? DEFAULT_OUTPUT_LIMIT;
   let outputBytes = 0;
   let timedOut = false;
+  let outputLimitExceeded = false;
 
   const collect = (target: Buffer[], chunk: Buffer): void => {
     outputBytes += chunk.length;
     if (outputBytes > outputLimit) {
-      if (child.pid !== undefined) killProcessTree(child.pid);
+      if (!outputLimitExceeded && child.pid !== undefined) {
+        outputLimitExceeded = true;
+        killProcessTree(child.pid);
+      }
       return;
     }
     target.push(Buffer.from(chunk));
   };
-  child.stdout.on("data", (chunk: Buffer) => collect(stdout, chunk));
-  child.stderr.on("data", (chunk: Buffer) => collect(stderr, chunk));
+  child.stdout!.on("data", (chunk: Buffer) => collect(stdout, chunk));
+  child.stderr!.on("data", (chunk: Buffer) => collect(stderr, chunk));
 
   const timer = setTimeout(() => {
     timedOut = true;
@@ -95,6 +107,7 @@ export async function runChildProcess(
       exitCode: result.code ?? 1,
       signal: result.signal,
       timedOut,
+      outputLimitExceeded,
       durationMs: Date.now() - startedAt,
       stdout: Buffer.concat(stdout),
       stderr: Buffer.concat(stderr),

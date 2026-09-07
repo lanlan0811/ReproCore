@@ -23,6 +23,7 @@ import {
   OracleDocumentSchema,
   readOracleDocument,
   writeOracleDocument,
+  type OracleDocument,
 } from "@reprocore/oracles";
 import {
   hasBlockingFindings,
@@ -33,12 +34,16 @@ import {
 } from "@reprocore/redaction";
 import { generateStaticReport } from "@reprocore/report";
 import {
+  evaluateFixtureWithDocker,
   readReplayFixture,
   ReplayFixtureSchema,
   runDoctor,
   runFixtureReplay,
   type ReplayFixture,
   verifyBaseline,
+  verifyDockerBaseline,
+  type DockerOracleOptions,
+  UnsafeDockerImageError,
 } from "@reprocore/replay";
 import {
   CliInputError,
@@ -57,8 +62,8 @@ Usage:
   reprocore doctor [--json]
   reprocore capture --out <directory> [--include-content] [--json] -- <server> [args...]
   reprocore oracle init --out <oracle.yaml> [--name <name>] [--json]
-  reprocore replay --fixture <fixture.json> --oracle <oracle.yaml> [--repeat <count>] [--json]
-  reprocore minimize --fixture <fixture.json> --oracle <oracle.yaml> --out <fixture.json> [--json]
+  reprocore replay --fixture <fixture.json> --oracle <oracle.yaml> [--repeat <count>] [--docker-image <name@sha256:digest>] [--timeout-ms <milliseconds>] [--json]
+  reprocore minimize --fixture <fixture.json> --oracle <oracle.yaml> --out <fixture.json> [--docker-image <name@sha256:digest>] [--timeout-ms <milliseconds>] [--json]
   reprocore report --case <name.mincase> [--out <report.html>] [--json]
   reprocore pack --fixture <fixture.json> --oracle <oracle.yaml> --proof <proof.json> --out <name.mincase.zip> --confirm-export [--json]
   reprocore redact --check <path> [--json]
@@ -81,6 +86,8 @@ Options:
   -v, --version      Show the version
   --json             Emit a JSON command summary (capture uses stderr)
   --confirm-export   Confirm creation of a portable, redacted export
+  --docker-image     Digest-pinned image for a custom_script Oracle
+  --timeout-ms       Per-container timeout for Docker Oracle evaluation
 `;
 
 export interface CliIo {
@@ -189,6 +196,39 @@ function parseCommandOptions(
 
 function asJsonValue(value: unknown): JsonValue {
   return JSON.parse(JSON.stringify(value)) as JsonValue;
+}
+
+function dockerOptionsForOracle(
+  command: string,
+  options: ParsedCommandOptions,
+  oracle: OracleDocument,
+): DockerOracleOptions | undefined {
+  const usesCustomScript = oracle.rules.some(
+    (rule) => rule.kind === "custom_script",
+  );
+  const image = options.values.get("--docker-image");
+  const timeoutText = options.values.get("--timeout-ms");
+  if (!usesCustomScript) {
+    if (image !== undefined || timeoutText !== undefined) {
+      throw new CliInputError(
+        `${command} Docker options require a custom_script Oracle rule`,
+      );
+    }
+    return undefined;
+  }
+  if (image === undefined) {
+    throw new SafetyBlockedError(
+      `${command} requires --docker-image <name@sha256:digest> for a custom_script Oracle`,
+    );
+  }
+  const timeoutMs =
+    timeoutText === undefined
+      ? oracle.timeoutMs
+      : Number.parseInt(timeoutText, 10);
+  if (!Number.isInteger(timeoutMs) || timeoutMs < 1) {
+    throw new CliInputError("--timeout-ms must be a positive integer");
+  }
+  return { image, timeoutMs };
 }
 
 function writeResult(
@@ -318,7 +358,7 @@ export async function runCli(
       const commandArgs = parseCommandOptions(
         "replay",
         args.slice(1),
-        ["--fixture", "--oracle", "--repeat"],
+        ["--fixture", "--oracle", "--repeat", "--docker-image", "--timeout-ms"],
         ["--json"],
       );
       const fixturePath = commandArgs.values.get("--fixture");
@@ -330,6 +370,12 @@ export async function runCli(
       }
       const repeatText = commandArgs.values.get("--repeat");
       const oracle = readOracleDocument(resolve(oraclePath));
+      const fixture = readReplayFixture(resolve(fixturePath));
+      const dockerOptions = dockerOptionsForOracle(
+        "replay",
+        commandArgs,
+        oracle,
+      );
       const repeat =
         repeatText === undefined
           ? oracle.repeat
@@ -339,11 +385,10 @@ export async function runCli(
           "--repeat must be an integer between 1 and 100",
         );
       }
-      const baseline = verifyBaseline(
-        readReplayFixture(resolve(fixturePath)),
-        oracle,
-        repeat,
-      );
+      const baseline =
+        dockerOptions === undefined
+          ? verifyBaseline(fixture, oracle, repeat)
+          : await verifyDockerBaseline(fixture, oracle, dockerOptions, repeat);
       writeResult(
         io,
         commandArgs.flags.has("--json"),
@@ -367,6 +412,8 @@ export async function runCli(
           "--cache",
           "--budget-tests",
           "--budget-ms",
+          "--docker-image",
+          "--timeout-ms",
         ],
         ["--json"],
       );
@@ -382,17 +429,6 @@ export async function runCli(
           "minimize requires --fixture <fixture.json>, --oracle <oracle.yaml>, and --out <fixture.json>",
         );
       }
-      const fixture = readReplayFixture(resolve(fixturePath));
-      const oracle = readOracleDocument(resolve(oraclePath));
-      const baseline = verifyBaseline(fixture, oracle, 3);
-      if (baseline.status !== "STABLE") return EXIT_CODES.flakyUnsupported;
-
-      const transactions: FixtureTransaction[] = fixture.exchanges.map(
-        (exchange, index) => ({
-          transactionId: `exchange-${index}`,
-          exchange,
-        }),
-      );
       const maxTestsText = commandArgs.values.get("--budget-tests");
       const maxDurationText = commandArgs.values.get("--budget-ms");
       const maxTests =
@@ -407,7 +443,46 @@ export async function runCli(
       if (!Number.isInteger(maxDurationMs) || maxDurationMs < 1) {
         throw new CliInputError("--budget-ms must be a positive integer");
       }
+      const fixture = readReplayFixture(resolve(fixturePath));
+      const oracle = readOracleDocument(resolve(oraclePath));
+      const dockerOptions = dockerOptionsForOracle(
+        "minimize",
+        commandArgs,
+        oracle,
+      );
+      const evaluateCandidate =
+        dockerOptions === undefined
+          ? async (candidate: ReplayFixture) =>
+              evaluateOracle(oracle, runFixtureReplay(candidate).observation)
+                .result
+          : async (candidate: ReplayFixture) =>
+              (
+                await evaluateFixtureWithDocker(
+                  candidate,
+                  oracle,
+                  dockerOptions,
+                )
+              ).evaluation.result;
+      const evaluationIdentity =
+        dockerOptions === undefined
+          ? "fixed-response-v1"
+          : JSON.stringify({
+              backend: "docker-v1",
+              image: dockerOptions.image,
+              timeoutMs: dockerOptions.timeoutMs,
+            });
+      const baseline =
+        dockerOptions === undefined
+          ? verifyBaseline(fixture, oracle, 3)
+          : await verifyDockerBaseline(fixture, oracle, dockerOptions, 3);
+      if (baseline.status !== "STABLE") return EXIT_CODES.flakyUnsupported;
 
+      const transactions: FixtureTransaction[] = fixture.exchanges.map(
+        (exchange, index) => ({
+          transactionId: `exchange-${index}`,
+          exchange,
+        }),
+      );
       using cache = new CandidateCache(
         resolve(
           commandArgs.values.get("--cache") ?? ".reprocore/candidates.sqlite",
@@ -420,7 +495,12 @@ export async function runCli(
         maxDurationMs,
         cache,
         cacheNamespace: sha256(
-          JSON.stringify({ fixture, oracle, stage: "transactions-v1" }),
+          JSON.stringify({
+            fixture,
+            oracle,
+            stage: "transactions-v1",
+            evaluationIdentity,
+          }),
         ),
         validate: (candidate) => candidate.length > 0,
         test: async (candidate) => {
@@ -428,10 +508,7 @@ export async function runCli(
             ...fixture,
             exchanges: candidate.map((transaction) => transaction.exchange),
           };
-          return evaluateOracle(
-            oracle,
-            runFixtureReplay(candidateFixture).observation,
-          ).result;
+          return evaluateCandidate(candidateFixture);
         },
       });
       const minimizedFixture: ReplayFixture = {
@@ -442,6 +519,8 @@ export async function runCli(
       };
       const structure = await minimizeFixtureJson(minimizedFixture, oracle, {
         cache,
+        evaluate: evaluateCandidate,
+        evaluationIdentity,
         maxTests: Math.max(0, maxTests - result.testCount),
         maxDurationMs: Math.max(
           0,
@@ -684,7 +763,8 @@ export async function runCli(
   } catch (error) {
     const safetyBlocked =
       error instanceof SensitiveContentError ||
-      error instanceof SafetyBlockedError;
+      error instanceof SafetyBlockedError ||
+      error instanceof UnsafeDockerImageError;
     const inputError =
       error instanceof CliInputError ||
       error instanceof SyntaxError ||

@@ -111,4 +111,15 @@ describe("oracle evaluation", () => {
       ),
     ).toThrow();
   });
+
+  it("rejects ambiguous multiple custom scripts", () => {
+    expect(() =>
+      OracleDocumentSchema.parse(
+        oracle([
+          { kind: "custom_script", command: "first" },
+          { kind: "custom_script", command: "second" },
+        ]),
+      ),
+    ).toThrow("only one custom_script rule is supported");
+  });
 });

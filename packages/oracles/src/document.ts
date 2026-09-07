@@ -103,7 +103,18 @@ export const OracleDocumentSchema = z
     timeoutMs: z.number().int().positive().default(10_000),
     rules: z.array(OracleRuleSchema).min(1),
   })
-  .strict();
+  .strict()
+  .superRefine((document, context) => {
+    if (
+      document.rules.filter((rule) => rule.kind === "custom_script").length > 1
+    ) {
+      context.addIssue({
+        code: "custom",
+        path: ["rules"],
+        message: "only one custom_script rule is supported",
+      });
+    }
+  });
 export type OracleDocument = z.infer<typeof OracleDocumentSchema>;
 
 export function readOracleDocument(path: string): OracleDocument {

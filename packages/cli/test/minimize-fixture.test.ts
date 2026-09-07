@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { sha256 } from "@reprocore/format";
 import { evaluateOracle, type OracleDocument } from "@reprocore/oracles";
 import { runFixtureReplay, type ReplayFixture } from "@reprocore/replay";
@@ -128,5 +128,56 @@ describe("fixture JSON minimization", () => {
       evaluateOracle(oracle, runFixtureReplay(result.fixture).observation)
         .result,
     ).toBe("INTERESTING");
+  });
+
+  it("counts unused-tool checks against the global test budget", async () => {
+    const fixture: ReplayFixture = {
+      version: 1,
+      protocolVersion: "2026-07-28",
+      exchanges: [
+        {
+          request: {
+            jsonrpc: "2.0",
+            id: "discover",
+            method: "server/discover",
+          },
+          response: {
+            jsonrpc: "2.0",
+            id: "discover",
+            result: { tools: [{ name: "unused", inputSchema: {} }] },
+          },
+        },
+      ],
+      files: {},
+      observation: {},
+    };
+    const oracle: OracleDocument = {
+      version: 1,
+      name: "budget",
+      repeat: 3,
+      mode: "all",
+      timeoutMs: 10_000,
+      rules: [{ kind: "process_exit", operator: "equals", value: 0 }],
+    };
+    const evaluate = vi.fn().mockResolvedValue("INTERESTING" as const);
+
+    const result = await minimizeFixtureJson(fixture, oracle, {
+      evaluate,
+      evaluationIdentity: "docker-image@sha256:test",
+      maxTests: 1,
+      maxDurationMs: 30_000,
+    });
+
+    expect(evaluate).toHaveBeenCalledTimes(1);
+    expect(result.testCount).toBe(1);
+    expect(result.minimality).toBe("budgetExhausted");
+    expect(result.ledgers[0]?.[0]).toMatchObject({
+      operation: "remove-unused-tools",
+      cacheHit: false,
+    });
+    expect(
+      (result.fixture.exchanges[0]?.response.result as { tools: unknown[] })
+        .tools,
+    ).toEqual([]);
   });
 });

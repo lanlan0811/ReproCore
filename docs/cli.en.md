@@ -64,20 +64,25 @@ forbidden tool calls, file hash, forbidden effects, and an isolated custom scrip
 ## `replay`
 
 ```bash
-reprocore replay --fixture <fixture.json> --oracle <oracle.yaml> [--repeat <1..100>] [--json]
+reprocore replay --fixture <fixture.json> --oracle <oracle.yaml> [--repeat <1..100>] \
+  [--docker-image <name@sha256:digest>] [--timeout-ms <milliseconds>] [--json]
 ```
 
 Uses fixed responses and does not start a real server. The default repeat count
 comes from the Oracle; three runs are recommended before minimization. If any run
 no longer satisfies the Oracle, the command returns code 5 rather than claiming
-that a flaky failure can be minimized.
+that a flaky failure can be minimized. A `custom_script` Oracle requires a Docker
+image pinned by SHA-256 digest. ReproCore sends the candidate fixture JSON to the
+container over stdin and uses the Oracle timeout or explicit `--timeout-ms`; it
+never falls back to executing the script on the host.
 
 ## `minimize`
 
 ```bash
 reprocore minimize --fixture <fixture.json> --oracle <oracle.yaml> \
   --out <fixture.json> [--proof <proof.json>] \
-  [--cache <cache.sqlite>] [--budget-tests <count>] [--budget-ms <milliseconds>] [--json]
+  [--cache <cache.sqlite>] [--budget-tests <count>] [--budget-ms <milliseconds>] \
+  [--docker-image <name@sha256:digest>] [--timeout-ms <milliseconds>] [--json]
 ```
 
 Runs dependency closure and transaction ddmin first, followed by Schema-aware
@@ -85,7 +90,9 @@ field reduction and unused-tool removal. The defaults allow 10,000 candidate tes
 and ten minutes. The result is `oneMinimal` only after every single-element removal
 check completes. Exhausting either budget returns code 4 and records
 `budgetExhausted`. The proof ledger contains candidate hashes, outcomes, durations,
-and cache hits, but no credential plaintext.
+and cache hits, but no credential plaintext. With `custom_script`, every candidate
+is evaluated in the selected Docker image; its digest and timeout are part of the
+cache namespace so results cannot leak across execution environments.
 
 ## `redact --check`
 

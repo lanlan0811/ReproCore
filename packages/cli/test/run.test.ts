@@ -10,7 +10,11 @@ import { join } from "node:path";
 import { Writable } from "node:stream";
 import { afterEach, describe, expect, it } from "vitest";
 import { sha256 } from "@reprocore/format";
-import { writeOracleDocument, type OracleDocument } from "@reprocore/oracles";
+import {
+  createOracleTemplate,
+  writeOracleDocument,
+  type OracleDocument,
+} from "@reprocore/oracles";
 import { EXIT_CODES } from "../src/index.js";
 import { runCli, type CliIo } from "../src/run.js";
 
@@ -265,6 +269,60 @@ describe("CLI safety boundary", () => {
       command: "capture",
       serverExitCode: 42,
       exitCode: EXIT_CODES.executionFailure,
+    });
+  });
+
+  it("requires a digest-pinned Docker image for custom Oracle replay", async () => {
+    const root = temporaryDirectory();
+    const fixturePath = join(root, "fixture.json");
+    const oraclePath = join(root, "custom.oracle.yaml");
+    writeFileSync(
+      fixturePath,
+      JSON.stringify({
+        version: 1,
+        protocolVersion: "2026-07-28",
+        exchanges: [
+          {
+            request: { jsonrpc: "2.0", id: 1, method: "tools/list" },
+            response: { jsonrpc: "2.0", id: 1, result: { tools: [] } },
+          },
+        ],
+        files: {},
+        observation: {},
+      }),
+    );
+    writeOracleDocument(oraclePath, {
+      ...createOracleTemplate("custom-docker"),
+      rules: [{ kind: "custom_script", command: "oracle-check", args: [] }],
+    });
+
+    const missingImage = captureIo();
+    expect(
+      await runCli(
+        ["replay", "--fixture", fixturePath, "--oracle", oraclePath, "--json"],
+        missingImage.io,
+      ),
+    ).toBe(EXIT_CODES.safetyBlocked);
+
+    const mutableImage = captureIo();
+    expect(
+      await runCli(
+        [
+          "replay",
+          "--fixture",
+          fixturePath,
+          "--oracle",
+          oraclePath,
+          "--docker-image",
+          "fixture-image:latest",
+          "--json",
+        ],
+        mutableImage.io,
+      ),
+    ).toBe(EXIT_CODES.safetyBlocked);
+    expect(JSON.parse(mutableImage.stderr.join(""))).toMatchObject({
+      exitCode: EXIT_CODES.safetyBlocked,
+      safetyBlocked: true,
     });
   });
 

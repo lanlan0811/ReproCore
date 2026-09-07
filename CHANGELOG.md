@@ -40,6 +40,9 @@
   证明的内容篡改。
 - CLI 统一拒绝未知、重复及缺失值参数；`capture` 的任意 server 失败码稳定映射为
   ReproCore 执行失败码 1，同时在 JSON 摘要中保留原始 `serverExitCode`。
+- `replay` 与 `minimize` 可用 digest 固定的 Docker 镜像执行单个 `custom_script`
+  Oracle；候选通过 stdin 传入，镜像与超时参与缓存隔离，超时或输出超限的容器强制
+  清理，且不会回退到宿主机执行。
 
 ## [0.1.0] - Unreleased
 

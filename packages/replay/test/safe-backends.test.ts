@@ -12,13 +12,17 @@ import { sha256 } from "@reprocore/format";
 import { createOracleTemplate, evaluateOracle } from "@reprocore/oracles";
 import {
   createDockerArguments,
+  DockerCleanupError,
+  evaluateFixtureWithDocker,
   runDoctor,
+  runChildProcess,
   runDockerReplay,
   runLocalGeneratedFixture,
   safeWorkspacePath,
   sanitizeEnvironment,
   UnsafeDockerImageError,
   UnsafePathError,
+  verifyDockerBaseline,
 } from "../src/index.js";
 
 const cleanupPaths: string[] = [];
@@ -104,6 +108,29 @@ describe("safe replay backends", () => {
     ).toEqual({ PATH: "safe" });
   });
 
+  it("passes explicit stdin to a child without inheriting the parent stream", async () => {
+    const result = await runChildProcess(
+      process.execPath,
+      ["-e", "process.stdin.pipe(process.stdout)"],
+      { input: "candidate fixture", timeoutMs: 5_000 },
+    );
+    expect(result.exitCode).toBe(0);
+    expect(result.stdout.toString("utf8")).toBe("candidate fixture");
+  });
+
+  it("terminates a child that exceeds the captured output limit", async () => {
+    const result = await runChildProcess(
+      process.execPath,
+      [
+        "-e",
+        "process.stdout.write('x'.repeat(4096));setTimeout(() => {}, 10000)",
+      ],
+      { outputLimitBytes: 128, timeoutMs: 5_000 },
+    );
+    expect(result.outputLimitExceeded).toBe(true);
+    expect(result.durationMs).toBeLessThan(5_000);
+  });
+
   it("constructs a strongly isolated Docker invocation", () => {
     expect(
       createDockerArguments({
@@ -135,6 +162,7 @@ describe("safe replay backends", () => {
       exitCode: 0,
       signal: null,
       timedOut: false,
+      outputLimitExceeded: false,
       durationMs: 25,
       stdout: Buffer.from("checked"),
       stderr: Buffer.from("diagnostic"),
@@ -143,6 +171,7 @@ describe("safe replay backends", () => {
       {
         image: `fixture-image@sha256:${"a".repeat(64)}`,
         command: ["oracle-check", "--case", "fixture"],
+        stdin: "fixture-json\n",
         timeoutMs: 1_000,
       },
       execute,
@@ -168,15 +197,17 @@ describe("safe replay backends", () => {
       "docker",
       expect.arrayContaining([
         "--network=none",
+        "--interactive",
         `fixture-image@sha256:${"a".repeat(64)}`,
       ]),
-      { timeoutMs: 1_000 },
+      { input: "fixture-json\n", timeoutMs: 1_000 },
     );
 
     execute.mockResolvedValueOnce({
       exitCode: 1,
       signal: "SIGKILL",
       timedOut: true,
+      outputLimitExceeded: false,
       durationMs: 1_000,
       stdout: Buffer.alloc(0),
       stderr: Buffer.alloc(0),
@@ -192,6 +223,122 @@ describe("safe replay backends", () => {
     expect(evaluateOracle(oracle, timedOut.observation).result).toBe(
       "UNRESOLVED",
     );
+    expect(execute).toHaveBeenLastCalledWith(
+      "docker",
+      ["rm", "--force", expect.stringMatching(/^reprocore-/u)],
+      { timeoutMs: 10_000 },
+    );
+
+    execute.mockResolvedValueOnce({
+      exitCode: 1,
+      signal: "SIGKILL",
+      timedOut: false,
+      outputLimitExceeded: true,
+      durationMs: 50,
+      stdout: Buffer.alloc(0),
+      stderr: Buffer.alloc(0),
+    });
+    const outputLimited = await runDockerReplay(
+      {
+        image: `fixture-image@sha256:${"e".repeat(64)}`,
+        command: ["oracle-check"],
+        timeoutMs: 1_000,
+      },
+      execute,
+    );
+    expect(outputLimited.outputLimitExceeded).toBe(true);
+    expect(evaluateOracle(oracle, outputLimited.observation).result).toBe(
+      "UNRESOLVED",
+    );
+    expect(execute).toHaveBeenLastCalledWith(
+      "docker",
+      ["rm", "--force", expect.stringMatching(/^reprocore-/u)],
+      { timeoutMs: 10_000 },
+    );
+
+    const failedCleanup = vi
+      .fn()
+      .mockResolvedValueOnce({
+        exitCode: 1,
+        signal: "SIGKILL",
+        timedOut: true,
+        outputLimitExceeded: false,
+        durationMs: 1_000,
+        stdout: Buffer.alloc(0),
+        stderr: Buffer.alloc(0),
+      })
+      .mockResolvedValueOnce({
+        exitCode: 1,
+        signal: null,
+        timedOut: false,
+        outputLimitExceeded: false,
+        durationMs: 10,
+        stdout: Buffer.alloc(0),
+        stderr: Buffer.from("cleanup failed"),
+      });
+    await expect(
+      runDockerReplay(
+        {
+          image: `fixture-image@sha256:${"d".repeat(64)}`,
+          command: ["oracle-check"],
+          timeoutMs: 1_000,
+        },
+        failedCleanup,
+      ),
+    ).rejects.toBeInstanceOf(DockerCleanupError);
+  });
+
+  it("evaluates a custom Oracle against fixture JSON inside Docker", async () => {
+    const execute = vi.fn().mockResolvedValue({
+      exitCode: 0,
+      signal: null,
+      timedOut: false,
+      outputLimitExceeded: false,
+      durationMs: 10,
+      stdout: Buffer.alloc(0),
+      stderr: Buffer.alloc(0),
+    });
+    const fixture = {
+      version: 1 as const,
+      protocolVersion: "2026-07-28" as const,
+      exchanges: [
+        {
+          request: { jsonrpc: "2.0" as const, id: 1, method: "tools/list" },
+          response: { jsonrpc: "2.0" as const, id: 1, result: { tools: [] } },
+        },
+      ],
+      files: {},
+      observation: {},
+    };
+    const oracle = {
+      ...createOracleTemplate("docker-stdin"),
+      rules: [
+        {
+          kind: "custom_script" as const,
+          command: "oracle-check",
+          args: ["--stdin"],
+        },
+      ],
+    };
+    const options = {
+      image: `fixture-image@sha256:${"c".repeat(64)}`,
+      timeoutMs: 1_000,
+    };
+
+    const evaluation = await evaluateFixtureWithDocker(
+      fixture,
+      oracle,
+      options,
+      execute,
+    );
+    expect(evaluation.evaluation.result).toBe("INTERESTING");
+    expect(JSON.parse(execute.mock.calls[0]![2].input)).toMatchObject({
+      protocolVersion: "2026-07-28",
+    });
+    await expect(
+      verifyDockerBaseline(fixture, oracle, options, 3, execute),
+    ).resolves.toMatchObject({ status: "STABLE" });
+    expect(execute).toHaveBeenCalledTimes(4);
   });
 
   it("reports Docker absence as a warning while retaining local readiness", async () => {

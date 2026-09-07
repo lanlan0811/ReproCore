@@ -46,16 +46,19 @@ The Docker backend is for higher-risk input. Its arguments always disable networ
 select a non-root user, make the root filesystem read-only, and limit CPU, memory,
 PIDs, and temporary storage. It rejects images that are not pinned by SHA-256 digest;
 the user must still audit the image supply chain. A normally completed isolated
-process supplies the custom-script Oracle observation. A timeout remains
-`UNRESOLVED`. Only SHA-256 summaries of the invocation, stdout, and stderr are kept;
-raw output is not added to a case.
+process supplies the custom-script Oracle observation. A timeout or captured-output
+limit breach remains `UNRESOLVED`. Candidate fixtures are sent only over stdin
+without mounting a host directory. An interrupted container is forcibly removed by
+its random container name, and cleanup failure is an error. Only SHA-256 summaries
+of the invocation, stdout, and stderr are kept; raw output is not added to a case.
 
 ## Reports and imported cases
 
 Reports escape every untrusted field, contain no JavaScript, and set a
 `default-src 'none'` Content Security Policy. Visual markers use inline SVG. The
-`.mincase` verifier rejects unexpected top-level files, symbolic links, databases,
-raw frames, unknown format major versions, and mismatched content hashes.
+`.mincase` verifier rejects unlisted files at any directory level, symbolic links,
+databases, raw frames, unknown format major versions, and mismatched hashes for all
+standard artifacts.
 
 Do not double-click or directly run miscellaneous files from an unknown archive.
 Extract it in isolation, inspect the manifest and redaction proof, and run
