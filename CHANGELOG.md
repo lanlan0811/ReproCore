@@ -16,6 +16,7 @@
 - 中英文 README、安装、CLI、架构、安全、格式、贡献、治理和行为准则文档。
 - npm、Windows、macOS、Linux 三平台产物、SBOM、校验和、来源证明及 GitHub/Gitee
   镜像发布工作流。
+- GitHub 可识别的双语缺陷模板、默认 PR 模板和结构化外部试用反馈表单。
 
 ### Security
 

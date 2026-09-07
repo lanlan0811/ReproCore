@@ -1,0 +1,136 @@
+name: 外部试用反馈
+description: 提交 v0.1.0 发布前的匿名、去敏试用结果
+title: "[External trial] "
+labels:
+  - external-testing
+body:
+  - type: markdown
+    attributes:
+      value: |
+        感谢参与 ReproCore v0.1.0 外部试用。请先完成 `docs/external-testing.md` 中的任务。
+        不要填写姓名、设备名、个人路径、真实凭据或原始会话；所有附件必须先通过脱敏检查。
+  - type: dropdown
+    id: participant
+    attributes:
+      label: 匿名参与者编号
+      description: 同一批试用中每个编号只能使用一次。
+      options:
+        - T1
+        - T2
+        - T3
+        - T4
+        - T5
+    validations:
+      required: true
+  - type: dropdown
+    id: operating-system
+    attributes:
+      label: 操作系统
+      options:
+        - Windows
+        - macOS
+        - Linux
+    validations:
+      required: true
+  - type: input
+    id: node-version
+    attributes:
+      label: Node.js 版本
+      placeholder: 例如 24.8.0；不要包含设备或用户信息
+    validations:
+      required: true
+  - type: input
+    id: reprocore-version
+    attributes:
+      label: ReproCore 版本或候选包标识
+      placeholder: 例如 0.1.0 或候选 tarball 的 SHA256
+    validations:
+      required: true
+  - type: dropdown
+    id: install-result
+    attributes:
+      label: 是否在不求助实现者的情况下完成安装
+      options:
+        - 是
+        - 否
+        - 被问题阻塞
+    validations:
+      required: true
+  - type: dropdown
+    id: replay-result
+    attributes:
+      label: Oracle 与 3/3 replay 结果
+      options:
+        - 连续 3 次通过
+        - 未连续通过
+        - 被问题阻塞
+    validations:
+      required: true
+  - type: dropdown
+    id: minimize-result
+    attributes:
+      label: minimize、proof 与 5/5 verify 结果
+      options:
+        - 全部完成且状态含义清楚
+        - 已完成但状态含义不清楚
+        - 未完成或被问题阻塞
+    validations:
+      required: true
+  - type: dropdown
+    id: export-confirmation
+    attributes:
+      label: 是否理解 --confirm-export 且确认缺少参数时不会产生产物
+      options:
+        - 是
+        - 否
+    validations:
+      required: true
+  - type: dropdown
+    id: safety-clarity
+    attributes:
+      label: 安全阻断清晰度
+      description: 1 表示完全不清楚，5 表示非常清楚。
+      options:
+        - "1"
+        - "2"
+        - "3"
+        - "4"
+        - "5"
+    validations:
+      required: true
+  - type: dropdown
+    id: report-quality
+    attributes:
+      label: 离线报告是否足以复现
+      description: 1 表示完全不足，5 表示完全足够。
+      options:
+        - "1"
+        - "2"
+        - "3"
+        - "4"
+        - "5"
+    validations:
+      required: true
+  - type: textarea
+    id: first-blocker
+    attributes:
+      label: 首个阻塞点
+      description: 没有阻塞时填写“无”；只描述已去敏的现象和步骤。
+    validations:
+      required: true
+  - type: textarea
+    id: suggestions
+    attributes:
+      label: 建议
+      description: 可选；不得包含个人信息或敏感内容。
+  - type: checkboxes
+    id: attestations
+    attributes:
+      label: 提交确认
+      options:
+        - label: 我未参与 ReproCore 的实现，并按清单实际执行了上述试用。
+          required: true
+        - label: 本记录不含姓名、设备名、个人路径、真实凭据或原始会话。
+          required: true
+        - label: 我已对所有附件运行 `reprocore redact --check`，或本记录没有附件。
+          required: true
