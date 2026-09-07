@@ -47,7 +47,9 @@ storage. When enabled, the first credential scan happens before each frame is
 written, and a match exits with code 3. The output directory contains
 `capture.json`, `raw-frames.jsonl`, and `trace.jsonl`. When the content-enabled
 capture has complete request/response pairs for a supported protocol, it also
-creates `replay.fixture.json`. Never publish raw frames.
+creates `replay.fixture.json`. Never publish raw frames. If the server exits
+nonzero, the JSON summary retains `serverExitCode` while ReproCore itself uses the
+stable execution-failure exit code 1.
 
 ## `oracle init`
 

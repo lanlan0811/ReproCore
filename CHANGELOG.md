@@ -35,6 +35,8 @@
   符号链接。
 - 独立回归 runner 补齐常用 JSON Schema 2020-12 语义；无法等价支持的 Schema 自动
   生成 `explanatory` 案例。
+- CLI 统一拒绝未知、重复及缺失值参数；`capture` 的任意 server 失败码稳定映射为
+  ReproCore 执行失败码 1，同时在 JSON 摘要中保留原始 `serverExitCode`。
 
 ## [0.1.0] - Unreleased
 

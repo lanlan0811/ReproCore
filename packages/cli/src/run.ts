@@ -102,6 +102,12 @@ interface FixtureTransaction extends TransactionUnit {
   exchange: ReplayFixture["exchanges"][number];
 }
 
+interface ParsedCommandOptions {
+  flags: ReadonlySet<string>;
+  positionals: readonly string[];
+  values: ReadonlyMap<string, string>;
+}
+
 function fixtureDependencyGraph(
   fixture: ReplayFixture,
   transactions: readonly FixtureTransaction[],
@@ -133,9 +139,52 @@ function fixtureDependencyGraph(
   return graph;
 }
 
-function optionValue(args: string[], name: string): string | undefined {
-  const index = args.indexOf(name);
-  return index < 0 ? undefined : args[index + 1];
+function parseCommandOptions(
+  command: string,
+  args: readonly string[],
+  valueOptions: readonly string[],
+  flagOptions: readonly string[],
+  positionalCount = 0,
+): ParsedCommandOptions {
+  const allowedValues = new Set(valueOptions);
+  const allowedFlags = new Set(flagOptions);
+  const values = new Map<string, string>();
+  const flags = new Set<string>();
+  const positionals: string[] = [];
+
+  for (let index = 0; index < args.length; index += 1) {
+    const option = args[index]!;
+    if (allowedValues.has(option)) {
+      if (values.has(option)) {
+        throw new CliInputError(`${command} option ${option} was repeated`);
+      }
+      const value = args[index + 1];
+      if (value === undefined || value.length === 0 || value.startsWith("--")) {
+        throw new CliInputError(`${command} option ${option} requires a value`);
+      }
+      values.set(option, value);
+      index += 1;
+      continue;
+    }
+    if (allowedFlags.has(option)) {
+      if (flags.has(option)) {
+        throw new CliInputError(`${command} option ${option} was repeated`);
+      }
+      flags.add(option);
+      continue;
+    }
+    if (option.startsWith("-")) {
+      throw new CliInputError(`Unknown ${command} option: ${option}`);
+    }
+    positionals.push(option);
+  }
+
+  if (positionals.length > positionalCount) {
+    throw new CliInputError(
+      `${command} received an unexpected argument: ${positionals[positionalCount]}`,
+    );
+  }
+  return { flags, positionals, values };
 }
 
 function asJsonValue(value: unknown): JsonValue {
@@ -156,23 +205,14 @@ function parseCaptureArguments(args: string[]): CaptureArguments {
   if (separator < 0 || separator === args.length - 1) {
     throw new CliInputError("capture requires `-- <server> [args...]`");
   }
-  const options = args.slice(0, separator);
+  const options = parseCommandOptions(
+    "capture",
+    args.slice(0, separator),
+    ["--out"],
+    ["--include-content", "--json"],
+  );
   const server = args.slice(separator + 1);
-  let outputDirectory: string | undefined;
-  let includeContent = false;
-  let json = false;
-
-  for (let index = 0; index < options.length; index += 1) {
-    const option = options[index];
-    if (option === "--include-content") includeContent = true;
-    else if (option === "--json") json = true;
-    else if (option === "--out") {
-      outputDirectory = options[index + 1];
-      index += 1;
-    } else {
-      throw new CliInputError(`Unknown capture option: ${option ?? ""}`);
-    }
-  }
+  const outputDirectory = options.values.get("--out");
   if (outputDirectory === undefined)
     throw new CliInputError("capture requires --out <directory>");
   const command = server[0];
@@ -181,8 +221,8 @@ function parseCaptureArguments(args: string[]): CaptureArguments {
   return {
     command,
     commandArguments: server.slice(1),
-    includeContent,
-    json,
+    includeContent: options.flags.has("--include-content"),
+    json: options.flags.has("--json"),
     outputDirectory: resolve(outputDirectory),
   };
 }
@@ -203,11 +243,16 @@ export async function runCli(
 
   try {
     if (command === "doctor") {
-      const json = args.slice(1).includes("--json");
+      const commandOptions = parseCommandOptions(
+        "doctor",
+        args.slice(1),
+        [],
+        ["--json"],
+      );
       const report = await runDoctor();
       writeResult(
         io,
-        json,
+        commandOptions.flags.has("--json"),
         report,
         report.checks
           .map(
@@ -229,25 +274,40 @@ export async function runCli(
         output: io.stdout,
         errorOutput: io.stderr,
       });
+      const exitCode =
+        result.exitCode === 0
+          ? EXIT_CODES.success
+          : EXIT_CODES.executionFailure;
       if (parsed.json) {
         io.stderr.write(
-          `${JSON.stringify({ command: "capture", output: parsed.outputDirectory, ...result })}\n`,
+          `${JSON.stringify({
+            command: "capture",
+            output: parsed.outputDirectory,
+            serverExitCode: result.exitCode,
+            signal: result.signal,
+            exitCode,
+          })}\n`,
         );
       }
-      return result.exitCode;
+      return exitCode;
     }
 
     if (command === "oracle" && args[1] === "init") {
-      const commandArgs = args.slice(2);
-      const outputPath = optionValue(commandArgs, "--out");
+      const commandArgs = parseCommandOptions(
+        "oracle init",
+        args.slice(2),
+        ["--out", "--name"],
+        ["--json"],
+      );
+      const outputPath = commandArgs.values.get("--out");
       if (outputPath === undefined)
         throw new CliInputError("oracle init requires --out <oracle.yaml>");
-      const name = optionValue(commandArgs, "--name") ?? "reprocore-failure";
+      const name = commandArgs.values.get("--name") ?? "reprocore-failure";
       const resolvedPath = resolve(outputPath);
       writeOracleDocument(resolvedPath, createOracleTemplate(name));
       writeResult(
         io,
-        commandArgs.includes("--json"),
+        commandArgs.flags.has("--json"),
         { command: "oracle init", output: resolvedPath },
         `Created ${resolvedPath}`,
       );
@@ -255,15 +315,20 @@ export async function runCli(
     }
 
     if (command === "replay") {
-      const commandArgs = args.slice(1);
-      const fixturePath = optionValue(commandArgs, "--fixture");
-      const oraclePath = optionValue(commandArgs, "--oracle");
+      const commandArgs = parseCommandOptions(
+        "replay",
+        args.slice(1),
+        ["--fixture", "--oracle", "--repeat"],
+        ["--json"],
+      );
+      const fixturePath = commandArgs.values.get("--fixture");
+      const oraclePath = commandArgs.values.get("--oracle");
       if (fixturePath === undefined || oraclePath === undefined) {
         throw new CliInputError(
           "replay requires --fixture <fixture.json> and --oracle <oracle.yaml>",
         );
       }
-      const repeatText = optionValue(commandArgs, "--repeat");
+      const repeatText = commandArgs.values.get("--repeat");
       const oracle = readOracleDocument(resolve(oraclePath));
       const repeat =
         repeatText === undefined
@@ -281,7 +346,7 @@ export async function runCli(
       );
       writeResult(
         io,
-        commandArgs.includes("--json"),
+        commandArgs.flags.has("--json"),
         baseline,
         `${baseline.status}: ${baseline.evaluations.length}/${repeat} checks completed`,
       );
@@ -291,10 +356,23 @@ export async function runCli(
     }
 
     if (command === "minimize") {
-      const commandArgs = args.slice(1);
-      const fixturePath = optionValue(commandArgs, "--fixture");
-      const oraclePath = optionValue(commandArgs, "--oracle");
-      const outputPath = optionValue(commandArgs, "--out");
+      const commandArgs = parseCommandOptions(
+        "minimize",
+        args.slice(1),
+        [
+          "--fixture",
+          "--oracle",
+          "--out",
+          "--proof",
+          "--cache",
+          "--budget-tests",
+          "--budget-ms",
+        ],
+        ["--json"],
+      );
+      const fixturePath = commandArgs.values.get("--fixture");
+      const oraclePath = commandArgs.values.get("--oracle");
+      const outputPath = commandArgs.values.get("--out");
       if (
         fixturePath === undefined ||
         oraclePath === undefined ||
@@ -315,8 +393,8 @@ export async function runCli(
           exchange,
         }),
       );
-      const maxTestsText = optionValue(commandArgs, "--budget-tests");
-      const maxDurationText = optionValue(commandArgs, "--budget-ms");
+      const maxTestsText = commandArgs.values.get("--budget-tests");
+      const maxDurationText = commandArgs.values.get("--budget-ms");
       const maxTests =
         maxTestsText === undefined ? 10_000 : Number.parseInt(maxTestsText, 10);
       const maxDurationMs =
@@ -332,7 +410,7 @@ export async function runCli(
 
       using cache = new CandidateCache(
         resolve(
-          optionValue(commandArgs, "--cache") ?? ".reprocore/candidates.sqlite",
+          commandArgs.values.get("--cache") ?? ".reprocore/candidates.sqlite",
         ),
       );
       const minimizationStarted = Date.now();
@@ -385,7 +463,7 @@ export async function runCli(
         },
       );
       const proofPath = resolve(
-        optionValue(commandArgs, "--proof") ?? `${outputPath}.proof.json`,
+        commandArgs.values.get("--proof") ?? `${outputPath}.proof.json`,
       );
       writeFileSync(
         proofPath,
@@ -418,7 +496,7 @@ export async function runCli(
       };
       writeResult(
         io,
-        commandArgs.includes("--json"),
+        commandArgs.flags.has("--json"),
         summary,
         `${minimality}: ${result.originalCount} -> ${result.finalCount} transactions`,
       );
@@ -428,11 +506,16 @@ export async function runCli(
     }
 
     if (command === "pack") {
-      const commandArgs = args.slice(1);
-      const fixturePath = optionValue(commandArgs, "--fixture");
-      const oraclePath = optionValue(commandArgs, "--oracle");
-      const proofPath = optionValue(commandArgs, "--proof");
-      const outputPath = optionValue(commandArgs, "--out");
+      const commandArgs = parseCommandOptions(
+        "pack",
+        args.slice(1),
+        ["--fixture", "--oracle", "--proof", "--out", "--name", "--case-dir"],
+        ["--confirm-export", "--json"],
+      );
+      const fixturePath = commandArgs.values.get("--fixture");
+      const oraclePath = commandArgs.values.get("--oracle");
+      const proofPath = commandArgs.values.get("--proof");
+      const outputPath = commandArgs.values.get("--out");
       if (
         fixturePath === undefined ||
         oraclePath === undefined ||
@@ -446,16 +529,16 @@ export async function runCli(
       if (!outputPath.endsWith(".mincase.zip")) {
         throw new CliInputError("pack output must end with .mincase.zip");
       }
-      if (!commandArgs.includes("--confirm-export")) {
+      if (!commandArgs.flags.has("--confirm-export")) {
         throw new SafetyBlockedError(
           "pack requires --confirm-export after reviewing the redaction boundary",
         );
       }
       const inferredName = basename(outputPath, ".mincase.zip");
-      const name = optionValue(commandArgs, "--name") ?? inferredName;
+      const name = commandArgs.values.get("--name") ?? inferredName;
       const resolvedOutput = resolve(outputPath);
       const caseDirectory = resolve(
-        optionValue(commandArgs, "--case-dir") ??
+        commandArgs.values.get("--case-dir") ??
           join(dirname(resolvedOutput), `${name}.mincase`),
       );
       const fixture = readReplayFixture(resolve(fixturePath));
@@ -488,7 +571,7 @@ export async function runCli(
       });
       writeResult(
         io,
-        commandArgs.includes("--json"),
+        commandArgs.flags.has("--json"),
         created,
         `Created ${created.outputZip}`,
       );
@@ -498,14 +581,19 @@ export async function runCli(
     }
 
     if (command === "report") {
-      const commandArgs = args.slice(1);
-      const casePath = optionValue(commandArgs, "--case");
+      const commandArgs = parseCommandOptions(
+        "report",
+        args.slice(1),
+        ["--case", "--out"],
+        ["--json"],
+      );
+      const casePath = commandArgs.values.get("--case");
       if (casePath === undefined)
         throw new CliInputError("report requires --case <name.mincase>");
       const caseDirectory = resolve(casePath);
       validateMinCaseDirectory(caseDirectory);
       const outputPath = resolve(
-        optionValue(commandArgs, "--out") ?? join(caseDirectory, "report.html"),
+        commandArgs.values.get("--out") ?? join(caseDirectory, "report.html"),
       );
       const manifest = readMinCaseManifest(caseDirectory);
       const proof = JSON.parse(
@@ -523,7 +611,7 @@ export async function runCli(
       writeFileSync(outputPath, report, "utf8");
       writeResult(
         io,
-        commandArgs.includes("--json"),
+        commandArgs.flags.has("--json"),
         { command: "report", output: outputPath },
         `Created ${outputPath}`,
       );
@@ -531,8 +619,14 @@ export async function runCli(
     }
 
     if (command === "redact" && args[1] === "--check") {
-      const commandArgs = args.slice(2);
-      const target = commandArgs.find((argument) => !argument.startsWith("-"));
+      const commandArgs = parseCommandOptions(
+        "redact --check",
+        args.slice(2),
+        [],
+        ["--json"],
+        1,
+      );
+      const target = commandArgs.positionals[0];
       if (target === undefined)
         throw new CliInputError("redact --check requires <path>");
       const findings = scanPath(resolve(target));
@@ -544,7 +638,7 @@ export async function runCli(
       };
       writeResult(
         io,
-        commandArgs.includes("--json"),
+        commandArgs.flags.has("--json"),
         summary,
         `${summary.blockingCount === 0 ? "PASSED" : "BLOCKED"}: ${summary.findingCount} finding(s)`,
       );
@@ -554,11 +648,16 @@ export async function runCli(
     }
 
     if (command === "verify") {
-      const commandArgs = args.slice(1);
-      const caseDirectory = optionValue(commandArgs, "--case");
+      const commandArgs = parseCommandOptions(
+        "verify",
+        args.slice(1),
+        ["--case", "--repeat"],
+        ["--json"],
+      );
+      const caseDirectory = commandArgs.values.get("--case");
       if (caseDirectory === undefined)
         throw new CliInputError("verify requires --case <name.mincase>");
-      const repeatText = optionValue(commandArgs, "--repeat");
+      const repeatText = commandArgs.values.get("--repeat");
       const repeat =
         repeatText === undefined ? 5 : Number.parseInt(repeatText, 10);
       if (!Number.isInteger(repeat) || repeat < 1 || repeat > 100) {
@@ -569,7 +668,7 @@ export async function runCli(
       const verification = verifyMinCase(resolve(caseDirectory), repeat);
       writeResult(
         io,
-        commandArgs.includes("--json"),
+        commandArgs.flags.has("--json"),
         verification,
         `${verification.valid ? "VERIFIED" : "FAILED"}: ${verification.passed}/${repeat}`,
       );

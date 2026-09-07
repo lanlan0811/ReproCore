@@ -43,7 +43,8 @@ reprocore capture --out <directory> [--include-content] [--json] -- <server> [ar
 `--include-content` 是保存原始内容的显式选择。启用内容时，首遍凭据扫描在每帧写盘
 前执行，命中则退出码为 3。输出目录包含 `capture.json`、`raw-frames.jsonl` 和
 `trace.jsonl`。当内容捕获包含已完成且版本受支持的请求响应时，还会生成
-`replay.fixture.json`；不得把原始帧直接公开。
+`replay.fixture.json`；不得把原始帧直接公开。server 非零退出时，JSON 摘要保留
+`serverExitCode`，而 ReproCore 本身使用稳定的执行失败退出码 1。
 
 ## `oracle init`
 

@@ -227,6 +227,47 @@ describe("CLI safety boundary", () => {
     });
   });
 
+  it("rejects malformed options before command execution", async () => {
+    for (const args of [
+      ["doctor", "--unknown", "--json"],
+      ["oracle", "init", "--out", "--json"],
+      ["replay", "--fixture", "", "--oracle", "oracle.yaml", "--json"],
+      ["verify", "--case", "first", "--case", "second", "--json"],
+    ]) {
+      const captured = captureIo();
+      expect(await runCli(args, captured.io)).toBe(EXIT_CODES.usage);
+      expect(JSON.parse(captured.stderr.join(""))).toMatchObject({
+        exitCode: EXIT_CODES.usage,
+        safetyBlocked: false,
+      });
+    }
+  });
+
+  it("maps a captured server failure to the stable execution exit code", async () => {
+    const root = temporaryDirectory();
+    const captured = captureIo();
+    const exitCode = await runCli(
+      [
+        "capture",
+        "--out",
+        join(root, "capture"),
+        "--json",
+        "--",
+        process.execPath,
+        "-e",
+        "process.exit(42)",
+      ],
+      captured.io,
+    );
+
+    expect(exitCode).toBe(EXIT_CODES.executionFailure);
+    expect(JSON.parse(captured.stderr.join(""))).toMatchObject({
+      command: "capture",
+      serverExitCode: 42,
+      exitCode: EXIT_CODES.executionFailure,
+    });
+  });
+
   it("rejects an imported case with an unexpected top-level file", async () => {
     const root = temporaryDirectory();
     const caseDirectory = join(root, "unsafe.mincase");
