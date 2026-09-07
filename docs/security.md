@@ -48,6 +48,8 @@ stdout 和 stderr 的 SHA-256 审计摘要，不把输出内容写入案例包�
 报告转义所有不可信字段，无 JavaScript，CSP 默认为 `default-src 'none'`。视觉标记
 使用内联 SVG。`.mincase` 验证器拒绝任意目录层级的清单外文件、符号链接、数据库、
 原始帧和未知格式主版本，并检查全部标准制品哈希。
+`verify` 与 `report` 在读取内容前还会扫描整个案例目录；即使 manifest 中的哈希同步
+被修改，凭据、敏感查询参数、二进制内容等阻断项仍会拒绝处理。
 
 不要双击或直接执行未知包中的其他文件。先解压到隔离目录，检查 manifest 和
 redaction proof，运行 `reprocore verify`；对于来源不明或包含 custom script 的

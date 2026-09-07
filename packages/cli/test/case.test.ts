@@ -173,6 +173,15 @@ describe("portable mincase packaging", () => {
       "regression.test.mjs",
     );
     const regressionSource = readFileSync(regressionPath, "utf8");
+    writeFileSync(
+      regressionPath,
+      `${regressionSource}\n// authorization: Bearer abcdefghijklmnopqrstuvwxyz\n`,
+    );
+    expect(() => verifyMinCase(first.caseDirectory)).toThrow(
+      SafetyBlockedError,
+    );
+    writeFileSync(regressionPath, regressionSource);
+
     writeFileSync(regressionPath, `${regressionSource}\n// tampered\n`);
     expect(() => verifyMinCase(first.caseDirectory)).toThrow(
       "Artifact hash does not match manifest",

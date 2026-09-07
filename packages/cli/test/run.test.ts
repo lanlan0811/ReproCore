@@ -157,6 +157,25 @@ describe("CLI safety boundary", () => {
     expect(readFileSync(outputPath).length).toBeGreaterThan(0);
     expect(sha256(exportedFixture)).toMatch(/^sha256:[a-f0-9]{64}$/u);
 
+    const runnerPath = join(caseDirectory, "runner", "regression.test.mjs");
+    const runner = readFileSync(runnerPath, "utf8");
+    writeFileSync(
+      runnerPath,
+      `${runner}\n// cookie=session-abcdefghijklmnop\n`,
+    );
+    const unsafeImport = captureIo();
+    expect(
+      await runCli(
+        ["verify", "--case", caseDirectory, "--json"],
+        unsafeImport.io,
+      ),
+    ).toBe(EXIT_CODES.safetyBlocked);
+    expect(JSON.parse(unsafeImport.stderr.join(""))).toMatchObject({
+      safetyBlocked: true,
+      exitCode: EXIT_CODES.safetyBlocked,
+    });
+    writeFileSync(runnerPath, runner);
+
     const reportPath = join(caseDirectory, "report.html");
     writeFileSync(reportPath, "stale");
     const reportExitCode = await runCli(

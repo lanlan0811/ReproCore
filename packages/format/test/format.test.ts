@@ -68,6 +68,12 @@ describe("format contracts", () => {
     expect(scanSecretCandidates('{"api_key":"abcdefghijklmnop"}')).toEqual([
       expect.objectContaining({ kind: "api_key" }),
     ]);
+    expect(scanSecretCandidates("Cookie: session=abcdefghijklmnop")).toEqual([
+      expect.objectContaining({ kind: "cookie" }),
+    ]);
+    expect(scanSecretCandidates('oauth_code="abcdefghijklmnop"')).toEqual([
+      expect.objectContaining({ kind: "oauth_code" }),
+    ]);
     expect(scanSecretCandidates("ordinary text")).toHaveLength(0);
   });
 

@@ -52,7 +52,11 @@ import {
   VerificationError,
   VERSION,
 } from "./index.js";
-import { createMinCase, verifyMinCase } from "./case.js";
+import {
+  assertSafeMinCaseContent,
+  createMinCase,
+  verifyMinCase,
+} from "./case.js";
 import { minimizeFixtureJson } from "./minimize-fixture.js";
 import { parse } from "yaml";
 
@@ -671,6 +675,7 @@ export async function runCli(
         throw new CliInputError("report requires --case <name.mincase>");
       const caseDirectory = resolve(casePath);
       validateMinCaseDirectory(caseDirectory);
+      assertSafeMinCaseContent(caseDirectory);
       const outputPath = resolve(
         commandArgs.values.get("--out") ?? join(caseDirectory, "report.html"),
       );

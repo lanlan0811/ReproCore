@@ -21,6 +21,7 @@ import { getProtocolProfile } from "@reprocore/protocol-mcp";
 import {
   hasBlockingFindings,
   RedactionProofSchema,
+  scanPath,
   scanText,
   type RedactionProof,
 } from "@reprocore/redaction";
@@ -68,6 +69,14 @@ export interface VerifyCaseResult {
   repeat: number;
   passed: number;
   manifest: MinCaseManifest;
+}
+
+export function assertSafeMinCaseContent(caseDirectory: string): void {
+  if (hasBlockingFindings(scanPath(resolve(caseDirectory)))) {
+    throw new SafetyBlockedError(
+      "Imported .mincase contains content blocked by the safety policy",
+    );
+  }
 }
 
 function requireNumber(value: unknown, name: string): number {
@@ -585,6 +594,7 @@ export function verifyMinCase(
 ): VerifyCaseResult {
   const root = resolve(caseDirectory);
   const files = validateMinCaseDirectory(root);
+  assertSafeMinCaseContent(root);
   const manifest = readMinCaseManifest(root);
   const fixturePath = join(root, "fixtures", "replay.json");
   const oraclePath = join(root, "oracle.yaml");

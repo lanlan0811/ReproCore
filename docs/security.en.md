@@ -59,6 +59,9 @@ Reports escape every untrusted field, contain no JavaScript, and set a
 `.mincase` verifier rejects unlisted files at any directory level, symbolic links,
 databases, raw frames, unknown format major versions, and mismatched hashes for all
 standard artifacts.
+Before reading case content, `verify` and `report` also scan the entire directory.
+Credentials, sensitive query parameters, binary content, and other blocking
+findings are rejected even if manifest hashes were changed at the same time.
 
 Do not double-click or directly run miscellaneous files from an unknown archive.
 Extract it in isolation, inspect the manifest and redaction proof, and run
