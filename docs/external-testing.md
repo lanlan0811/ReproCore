@@ -3,6 +3,14 @@
 本清单用于 v0.1.0 发布前由 2–5 名未参与实现的使用者执行。不得在记录中收集真实
 凭据、原始会话内容或个人路径；问题附件先运行 `reprocore redact --check`。
 
+## 获取候选包
+
+打开 GitHub `master` 分支最新一次成功的 **CI**，在运行页面底部下载名称为
+`reprocore-<版本>-candidate-<完整提交 SHA>` 的 artifact。解压后先依据同目录的
+`SHA256SUMS` 核对 tarball 和 CycloneDX SBOM，再按安装文档从
+`reprocore-<版本>.tgz` 安装。提交反馈时填写该完整提交 SHA；不得使用来自其他提交或
+本地重新打包的制品冒充同一候选版本。
+
 ## 参与者任务
 
 1. 在 Windows 或 macOS/Linux 上按安装文档安装 tarball。

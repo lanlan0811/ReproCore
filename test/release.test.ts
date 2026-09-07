@@ -1,7 +1,7 @@
 import { createHash } from "node:crypto";
-import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { join, resolve } from "node:path";
 import { describe, expect, it, vi } from "vitest";
 import {
   buildCycloneDx,
@@ -14,6 +14,26 @@ import {
 } from "../scripts/publish-gitee-release.mjs";
 
 describe("release tooling", () => {
+  it("uploads one traceable external-trial candidate from Linux CI", () => {
+    const workflow = readFileSync(
+      resolve(import.meta.dirname, "../.github/workflows/ci.yml"),
+      "utf8",
+    );
+    expect(workflow).toContain("name: Upload external-trial candidate");
+    expect(workflow).toContain("if: runner.os == 'Linux'");
+    expect(workflow).toContain(
+      "name: reprocore-${{ steps.candidate.outputs.version }}-candidate-${{ github.sha }}",
+    );
+    for (const artifact of [
+      "release/reprocore-*.tgz",
+      "release/reprocore-*.cdx.json",
+      "release/SHA256SUMS",
+    ]) {
+      expect(workflow).toContain(artifact);
+    }
+    expect(workflow).toContain("if-no-files-found: error");
+  });
+
   it("creates deterministic path-free CycloneDX metadata and checksums", () => {
     const sbom = buildCycloneDx(
       {

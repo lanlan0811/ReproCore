@@ -36,6 +36,24 @@ jobs:
       - run: pnpm pack:cli
       - run: pnpm release:metadata
       - run: pnpm smoke:install
+      - name: Read candidate version
+        if: runner.os == 'Linux'
+        id: candidate
+        shell: bash
+        run: |
+          version="$(node -p "require('./packages/cli/package.json').version")"
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+      - name: Upload external-trial candidate
+        if: runner.os == 'Linux'
+        uses: actions/upload-artifact@v7
+        with:
+          name: reprocore-${{ steps.candidate.outputs.version }}-candidate-${{ github.sha }}
+          path: |
+            release/reprocore-*.tgz
+            release/reprocore-*.cdx.json
+            release/SHA256SUMS
+          if-no-files-found: error
+          retention-days: 30
 
   node-22-compatibility:
     name: Node 22.13 compatibility
