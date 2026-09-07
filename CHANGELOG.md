@@ -27,6 +27,8 @@
 
 - CLI 现在区分参数或输入格式错误、运行时执行失败、安全阻断和案例校验失败，并在 JSON
   错误摘要中返回对应的稳定退出码。
+- Docker 后端现在强制镜像固定 SHA-256 digest，把正常完成的隔离脚本退出码传递给
+  custom script Oracle，并记录调用及输出哈希；超时脚本保持 `UNRESOLVED`。
 
 ## [0.1.0] - Unreleased
 

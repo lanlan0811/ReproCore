@@ -7,14 +7,17 @@ import {
 } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { sha256 } from "@reprocore/format";
+import { createOracleTemplate, evaluateOracle } from "@reprocore/oracles";
 import {
   createDockerArguments,
   runDoctor,
+  runDockerReplay,
   runLocalGeneratedFixture,
   safeWorkspacePath,
   sanitizeEnvironment,
+  UnsafeDockerImageError,
   UnsafePathError,
 } from "../src/index.js";
 
@@ -104,7 +107,7 @@ describe("safe replay backends", () => {
   it("constructs a strongly isolated Docker invocation", () => {
     expect(
       createDockerArguments({
-        image: "fixture-image",
+        image: `fixture-image@sha256:${"a".repeat(64)}`,
         command: ["test"],
         timeoutMs: 1_000,
       }),
@@ -117,6 +120,77 @@ describe("safe replay backends", () => {
         "--memory=512m",
         "--pids-limit=64",
       ]),
+    );
+    expect(() =>
+      createDockerArguments({
+        image: "fixture-image:latest",
+        command: ["test"],
+        timeoutMs: 1_000,
+      }),
+    ).toThrow(UnsafeDockerImageError);
+  });
+
+  it("feeds an isolated custom-script result into Oracle evaluation", async () => {
+    const execute = vi.fn().mockResolvedValue({
+      exitCode: 0,
+      signal: null,
+      timedOut: false,
+      durationMs: 25,
+      stdout: Buffer.from("checked"),
+      stderr: Buffer.from("diagnostic"),
+    });
+    const result = await runDockerReplay(
+      {
+        image: `fixture-image@sha256:${"a".repeat(64)}`,
+        command: ["oracle-check", "--case", "fixture"],
+        timeoutMs: 1_000,
+      },
+      execute,
+    );
+    const oracle = {
+      ...createOracleTemplate("docker-custom-script"),
+      rules: [
+        {
+          kind: "custom_script" as const,
+          command: "oracle-check",
+          args: ["--case", "fixture"],
+        },
+      ],
+    };
+
+    expect(evaluateOracle(oracle, result.observation).result).toBe(
+      "INTERESTING",
+    );
+    expect(result.invocationHash).toMatch(/^sha256:[a-f0-9]{64}$/u);
+    expect(result.stdoutHash).toBe(sha256("checked"));
+    expect(result.stderrHash).toBe(sha256("diagnostic"));
+    expect(execute).toHaveBeenCalledWith(
+      "docker",
+      expect.arrayContaining([
+        "--network=none",
+        `fixture-image@sha256:${"a".repeat(64)}`,
+      ]),
+      { timeoutMs: 1_000 },
+    );
+
+    execute.mockResolvedValueOnce({
+      exitCode: 1,
+      signal: "SIGKILL",
+      timedOut: true,
+      durationMs: 1_000,
+      stdout: Buffer.alloc(0),
+      stderr: Buffer.alloc(0),
+    });
+    const timedOut = await runDockerReplay(
+      {
+        image: `fixture-image@sha256:${"b".repeat(64)}`,
+        command: ["oracle-check"],
+        timeoutMs: 1_000,
+      },
+      execute,
+    );
+    expect(evaluateOracle(oracle, timedOut.observation).result).toBe(
+      "UNRESOLVED",
     );
   });
 
