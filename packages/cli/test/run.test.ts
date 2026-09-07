@@ -291,6 +291,65 @@ describe("CLI safety boundary", () => {
     });
   });
 
+  it("reports an unstable minimize baseline without creating outputs", async () => {
+    const root = temporaryDirectory();
+    const fixturePath = join(root, "fixture.json");
+    const oraclePath = join(root, "oracle.yaml");
+    const outputPath = join(root, "minimized.json");
+    const proofPath = join(root, "minimized.proof.json");
+    writeFileSync(
+      fixturePath,
+      JSON.stringify({
+        version: 1,
+        protocolVersion: "2026-07-28",
+        exchanges: [
+          {
+            request: { jsonrpc: "2.0", id: 1, method: "tools/list" },
+            response: { jsonrpc: "2.0", id: 1, result: { tools: [] } },
+          },
+        ],
+        files: {},
+        observation: { exitCode: 0 },
+      }),
+    );
+    writeOracleDocument(oraclePath, {
+      ...createOracleTemplate("not-reproduced"),
+      rules: [{ kind: "process_exit", operator: "equals", value: 1 }],
+    });
+    const captured = captureIo();
+
+    const exitCode = await runCli(
+      [
+        "minimize",
+        "--fixture",
+        fixturePath,
+        "--oracle",
+        oraclePath,
+        "--out",
+        outputPath,
+        "--proof",
+        proofPath,
+        "--json",
+      ],
+      captured.io,
+    );
+
+    expect(exitCode).toBe(EXIT_CODES.flakyUnsupported);
+    const summary = JSON.parse(captured.stdout.join("")) as {
+      status: string;
+      evaluations: Array<{ result: string }>;
+    };
+    expect(summary.status).toBe("FLAKY_UNSUPPORTED");
+    expect(summary.evaluations).toHaveLength(3);
+    expect(
+      summary.evaluations.every(
+        (evaluation) => evaluation.result === "NOT_INTERESTING",
+      ),
+    ).toBe(true);
+    expect(() => readFileSync(outputPath)).toThrow();
+    expect(() => readFileSync(proofPath)).toThrow();
+  });
+
   it("requires a digest-pinned Docker image for custom Oracle replay", async () => {
     const root = temporaryDirectory();
     const fixturePath = join(root, "fixture.json");

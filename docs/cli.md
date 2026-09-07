@@ -83,6 +83,8 @@ reprocore minimize --fixture <fixture.json> --oracle <oracle.yaml> \
 则返回退出码 4 并标记 `budgetExhausted`。proof ledger 记录候选哈希、结果、耗时与
 缓存命中，不记录凭据明文。使用 `custom_script` 时，每个候选都在指定 Docker 镜像中
 判定，镜像 digest 与超时也进入缓存命名空间，避免跨执行环境复用错误结果。
+若 3/3 基线未稳定复现，命令在创建输出文件前返回退出码 5；`--json` 仍输出基线状态
+及每次判定结果，便于自动化区分抖动或未复现的输入。
 
 ## `redact --check`
 

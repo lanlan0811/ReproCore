@@ -479,7 +479,15 @@ export async function runCli(
         dockerOptions === undefined
           ? verifyBaseline(fixture, oracle, 3)
           : await verifyDockerBaseline(fixture, oracle, dockerOptions, 3);
-      if (baseline.status !== "STABLE") return EXIT_CODES.flakyUnsupported;
+      if (baseline.status !== "STABLE") {
+        writeResult(
+          io,
+          commandArgs.flags.has("--json"),
+          baseline,
+          `${baseline.status}: ${baseline.evaluations.length}/3 baseline checks completed; minimization skipped`,
+        );
+        return EXIT_CODES.flakyUnsupported;
+      }
 
       const transactions: FixtureTransaction[] = fixture.exchanges.map(
         (exchange, index) => ({

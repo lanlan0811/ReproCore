@@ -45,6 +45,8 @@
 - `replay` 与 `minimize` 可用 digest 固定的 Docker 镜像执行单个 `custom_script`
   Oracle；候选通过 stdin 传入，镜像与超时参与缓存隔离，超时或输出超限的容器强制
   清理，且不会回退到宿主机执行。
+- `minimize --json` 在基线未稳定复现时也输出完整判定摘要，并在创建缩减结果或 proof
+  前以稳定退出码 5 停止。
 
 ## [0.1.0] - Unreleased
 

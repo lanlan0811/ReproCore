@@ -93,6 +93,9 @@ check completes. Exhausting either budget returns code 4 and records
 and cache hits, but no credential plaintext. With `custom_script`, every candidate
 is evaluated in the selected Docker image; its digest and timeout are part of the
 cache namespace so results cannot leak across execution environments.
+If the 3/3 baseline is not stable, the command returns exit code 5 before creating
+output files. `--json` still emits the baseline status and every evaluation so
+automation can distinguish an unstable or unreproduced input.
 
 ## `redact --check`
 
