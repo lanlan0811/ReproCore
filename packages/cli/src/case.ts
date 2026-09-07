@@ -17,12 +17,18 @@ import {
 } from "@reprocore/oracles";
 import { getProtocolProfile } from "@reprocore/protocol-mcp";
 import {
+  hasBlockingFindings,
+  scanText,
+  type RedactionProof,
+} from "@reprocore/redaction";
+import { generateStaticReport } from "@reprocore/report";
+import {
   readReplayFixture,
   verifyBaseline,
   type ReplayFixture,
 } from "@reprocore/replay";
 import { stringify } from "yaml";
-import { VERSION } from "./index.js";
+import { SafetyBlockedError, VERSION } from "./index.js";
 
 interface ProofSummary {
   originalTransactionCount: number;
@@ -39,6 +45,8 @@ export interface CreateCaseOptions {
   fixture: ReplayFixture;
   oracle: OracleDocument;
   proof: unknown;
+  redaction: RedactionProof;
+  exportConfirmed: boolean;
 }
 
 export interface CreatedCase {
@@ -101,15 +109,6 @@ function proofSummary(proof: unknown): ProofSummary {
 function writeExclusive(path: string, content: string | Uint8Array): void {
   mkdirSync(dirname(path), { recursive: true });
   writeFileSync(path, content, { flag: "wx" });
-}
-
-function escapeHtml(value: string): string {
-  return value
-    .replaceAll("&", "&amp;")
-    .replaceAll("<", "&lt;")
-    .replaceAll(">", "&gt;")
-    .replaceAll('"', "&quot;")
-    .replaceAll("'", "&#39;");
 }
 
 const REPLAY_SERVER = `import { createHash } from "node:crypto";
@@ -236,14 +235,16 @@ const REPLAY_FIXTURE_SCHEMA = {
 };
 
 export function createMinCase(options: CreateCaseOptions): CreatedCase {
+  if (!options.exportConfirmed) {
+    throw new SafetyBlockedError(
+      "Export requires explicit confirmation after reviewing the redaction boundary",
+    );
+  }
   const name = validateCaseName(options.name);
   const caseDirectory = resolve(options.caseDirectory);
   if (basename(caseDirectory) !== `${name}.mincase`) {
     throw new Error(`case directory must be named ${name}.mincase`);
   }
-  mkdirSync(dirname(caseDirectory), { recursive: true });
-  mkdirSync(caseDirectory);
-
   const fixture = JSON.stringify(options.fixture, null, 2) + "\n";
   const oracle = stringify(OracleDocumentSchema.parse(options.oracle));
   const proof = JSON.stringify(options.proof, null, 2) + "\n";
@@ -259,10 +260,29 @@ export function createMinCase(options: CreateCaseOptions): CreatedCase {
   const hasCustomScript = options.oracle.rules.some(
     (rule) => rule.kind === "custom_script",
   );
+  const redaction: RedactionProof = structuredClone(options.redaction);
+  redaction.replayVerified = finalVerification.status === "STABLE";
+  const exportScan = [
+    fixture,
+    oracle,
+    proof,
+    trace,
+    REPLAY_SERVER,
+    REGRESSION_TEST,
+  ].flatMap((content, index) => scanText(content, `export-${index}`));
+  redaction.findings.push(...exportScan);
+  redaction.verified = redaction.verified && !hasBlockingFindings(exportScan);
+  if (!redaction.verified) {
+    throw new SafetyBlockedError(
+      "Export blocked because the second-pass scan found sensitive content",
+    );
+  }
   const executable =
     !hasCustomScript &&
     baseline.status === "STABLE" &&
-    finalVerification.status === "STABLE";
+    finalVerification.status === "STABLE" &&
+    redaction.verified &&
+    options.exportConfirmed;
   const manifest: MinCaseManifest = MinCaseManifestSchema.parse({
     formatVersion: FORMAT_VERSION,
     name,
@@ -290,9 +310,9 @@ export function createMinCase(options: CreateCaseOptions): CreatedCase {
         (entry) => entry.result === "INTERESTING",
       ).length,
     },
-    redactionVerified: false,
-    sensitivity: "content",
-    exportConfirmed: false,
+    redactionVerified: redaction.verified && redaction.replayVerified,
+    sensitivity: redaction.substitutions.length === 0 ? "metadata" : "content",
+    exportConfirmed: options.exportConfirmed,
   });
 
   const provenance =
@@ -309,21 +329,20 @@ export function createMinCase(options: CreateCaseOptions): CreatedCase {
       null,
       2,
     ) + "\n";
-  const report = `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline'"><meta name="viewport" content="width=device-width,initial-scale=1"><title>${escapeHtml(name)} report</title><style>body{font:16px system-ui;max-width:72rem;margin:3rem auto;padding:0 1rem;color:#172033}code{background:#eef1f5;padding:.15rem .3rem}</style></head><body><h1>${escapeHtml(name)}</h1><p>ReproCore generated case. Run <code>node --test runner/regression.test.mjs</code>.</p></body></html>\n`;
+  const report = generateStaticReport({
+    manifest,
+    proof: options.proof,
+    redaction,
+  });
+
+  mkdirSync(dirname(caseDirectory), { recursive: true });
+  mkdirSync(caseDirectory);
 
   writeExclusive(join(caseDirectory, "manifest.yaml"), stringify(manifest));
   writeExclusive(join(caseDirectory, "trace.jsonl"), trace);
   writeExclusive(join(caseDirectory, "oracle.yaml"), oracle);
   writeExclusive(join(caseDirectory, "provenance.json"), provenance);
-  writeExclusive(
-    join(caseDirectory, "redaction.yaml"),
-    stringify({
-      version: 1,
-      verified: false,
-      findings: [],
-      note: "redaction verification pending",
-    }),
-  );
+  writeExclusive(join(caseDirectory, "redaction.yaml"), stringify(redaction));
   writeExclusive(join(caseDirectory, "report.html"), report);
   writeExclusive(
     join(caseDirectory, "package.json"),

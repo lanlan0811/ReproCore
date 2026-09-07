@@ -10,7 +10,9 @@ import {
 } from "@reprocore/format";
 import type { OracleDocument } from "@reprocore/oracles";
 import type { ReplayFixture } from "@reprocore/replay";
+import type { RedactionProof } from "@reprocore/redaction";
 import { createMinCase, verifyMinCase } from "../src/case.js";
+import { SafetyBlockedError } from "../src/index.js";
 
 const cleanupPaths: string[] = [];
 
@@ -29,6 +31,8 @@ function inputs(): {
   fixture: ReplayFixture;
   oracle: OracleDocument;
   proof: unknown;
+  redaction: RedactionProof;
+  exportConfirmed: boolean;
 } {
   const fixture: ReplayFixture = {
     version: 1,
@@ -86,10 +90,37 @@ function inputs(): {
       ledgers: [],
     },
   };
-  return { fixture, oracle, proof };
+  return {
+    fixture,
+    oracle,
+    proof,
+    redaction: {
+      version: 1,
+      passes: 2,
+      verified: true,
+      replayVerified: false,
+      findings: [],
+      substitutions: [],
+    },
+    exportConfirmed: true,
+  };
 }
 
 describe("portable mincase packaging", () => {
+  it("refuses to create any files without explicit export confirmation", () => {
+    const root = temporaryDirectory();
+    expect(() =>
+      createMinCase({
+        name: "unconfirmed",
+        caseDirectory: join(root, "unconfirmed.mincase"),
+        outputZip: join(root, "unconfirmed.mincase.zip"),
+        ...inputs(),
+        exportConfirmed: false,
+      }),
+    ).toThrow(SafetyBlockedError);
+    expect(() => readFileSync(join(root, "unconfirmed.mincase.zip"))).toThrow();
+  });
+
   it("creates byte-identical ZIPs and a standalone 5/5 regression test", () => {
     const firstRoot = temporaryDirectory();
     const secondRoot = temporaryDirectory();
@@ -112,6 +143,11 @@ describe("portable mincase packaging", () => {
     expect(first.manifest.originalTransactionCount).toBe(40);
     expect(first.manifest.finalTransactionCount).toBe(1);
     expect(first.manifest.finalVerification).toEqual({ repeat: 5, passed: 5 });
+    expect(first.manifest.redactionVerified).toBe(true);
+    expect(first.manifest.exportConfirmed).toBe(true);
+    expect(
+      readFileSync(join(first.caseDirectory, "report.html"), "utf8"),
+    ).toContain("default-src 'none'");
     expect(verifyMinCase(first.caseDirectory)).toEqual(
       expect.objectContaining({ valid: true, repeat: 5, passed: 5 }),
     );

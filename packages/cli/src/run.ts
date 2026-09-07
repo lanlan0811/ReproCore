@@ -5,7 +5,7 @@ import {
   captureProcess,
   SensitiveContentError,
 } from "@reprocore/capture-stdio";
-import { sha256 } from "@reprocore/format";
+import { readMinCaseManifest, sha256, type JsonValue } from "@reprocore/format";
 import {
   CandidateCache,
   minimizeTransactions,
@@ -15,19 +15,30 @@ import {
 import {
   createOracleTemplate,
   evaluateOracle,
+  OracleDocumentSchema,
   readOracleDocument,
   writeOracleDocument,
 } from "@reprocore/oracles";
 import {
+  hasBlockingFindings,
+  redactDocuments,
+  RedactionProofSchema,
+  scanPath,
+  scanText,
+} from "@reprocore/redaction";
+import { generateStaticReport } from "@reprocore/report";
+import {
   readReplayFixture,
+  ReplayFixtureSchema,
   runDoctor,
   runFixtureReplay,
   type ReplayFixture,
   verifyBaseline,
 } from "@reprocore/replay";
-import { EXIT_CODES, VERSION } from "./index.js";
+import { EXIT_CODES, SafetyBlockedError, VERSION } from "./index.js";
 import { createMinCase, verifyMinCase } from "./case.js";
 import { minimizeFixtureJson } from "./minimize-fixture.js";
+import { parse } from "yaml";
 
 const HELP = `ReproCore ${VERSION}
 
@@ -37,7 +48,9 @@ Usage:
   reprocore oracle init --out <oracle.yaml> [--name <name>] [--json]
   reprocore replay --fixture <fixture.json> --oracle <oracle.yaml> [--repeat <count>] [--json]
   reprocore minimize --fixture <fixture.json> --oracle <oracle.yaml> --out <fixture.json> [--json]
-  reprocore pack --fixture <fixture.json> --oracle <oracle.yaml> --proof <proof.json> --out <name.mincase.zip> [--json]
+  reprocore report --case <name.mincase> [--out <report.html>] [--json]
+  reprocore pack --fixture <fixture.json> --oracle <oracle.yaml> --proof <proof.json> --out <name.mincase.zip> --confirm-export [--json]
+  reprocore redact --check <path> [--json]
   reprocore verify --case <name.mincase> [--repeat <count>] [--json]
   reprocore --version
 
@@ -47,13 +60,16 @@ Commands:
   oracle   Create a versioned failure-oracle document
   replay   Run deterministic fixed-response replay and baseline checks
   minimize Reduce replay transactions while preserving the failure Oracle
+  report   Generate a safe, offline HTML report from a .mincase directory
   pack     Build a deterministic portable .mincase directory and ZIP
+  redact   Scan a file or directory without exposing matched values
   verify   Validate hashes and reproduce a .mincase failure
 
 Options:
   -h, --help         Show this help
   -v, --version      Show the version
   --json             Emit the command summary as JSON on stderr
+  --confirm-export   Confirm creation of a portable, redacted export
 `;
 
 export interface CliIo {
@@ -109,6 +125,10 @@ function fixtureDependencyGraph(
 function optionValue(args: string[], name: string): string | undefined {
   const index = args.indexOf(name);
   return index < 0 ? undefined : args[index + 1];
+}
+
+function asJsonValue(value: unknown): JsonValue {
+  return JSON.parse(JSON.stringify(value)) as JsonValue;
 }
 
 function writeResult(
@@ -413,6 +433,11 @@ export async function runCli(
       if (!outputPath.endsWith(".mincase.zip")) {
         throw new Error("pack output must end with .mincase.zip");
       }
+      if (!commandArgs.includes("--confirm-export")) {
+        throw new SafetyBlockedError(
+          "pack requires --confirm-export after reviewing the redaction boundary",
+        );
+      }
       const inferredName = basename(outputPath, ".mincase.zip");
       const name = optionValue(commandArgs, "--name") ?? inferredName;
       const resolvedOutput = resolve(outputPath);
@@ -420,13 +445,33 @@ export async function runCli(
         optionValue(commandArgs, "--case-dir") ??
           join(dirname(resolvedOutput), `${name}.mincase`),
       );
+      const fixture = readReplayFixture(resolve(fixturePath));
+      const oracle = readOracleDocument(resolve(oraclePath));
+      const proof = JSON.parse(
+        readFileSync(resolve(proofPath), "utf8"),
+      ) as unknown;
+      const redacted = redactDocuments([
+        asJsonValue(fixture),
+        asJsonValue(oracle),
+        asJsonValue(proof),
+      ]);
+      if (!redacted.proof.verified) {
+        throw new SafetyBlockedError(
+          "Export blocked because sensitive content remains after redaction",
+        );
+      }
+      const redactedFixture = ReplayFixtureSchema.parse(redacted.values[0]);
+      const redactedOracle = OracleDocumentSchema.parse(redacted.values[1]);
+      const redactedProof = redacted.values[2];
       const created = createMinCase({
         name,
         caseDirectory,
         outputZip: resolvedOutput,
-        fixture: readReplayFixture(resolve(fixturePath)),
-        oracle: readOracleDocument(resolve(oraclePath)),
-        proof: JSON.parse(readFileSync(resolve(proofPath), "utf8")) as unknown,
+        fixture: redactedFixture,
+        oracle: redactedOracle,
+        proof: redactedProof,
+        redaction: redacted.proof,
+        exportConfirmed: true,
       });
       writeResult(
         io,
@@ -437,6 +482,61 @@ export async function runCli(
       return created.manifest.caseType === "executable"
         ? EXIT_CODES.success
         : EXIT_CODES.unresolved;
+    }
+
+    if (command === "report") {
+      const commandArgs = args.slice(1);
+      const casePath = optionValue(commandArgs, "--case");
+      if (casePath === undefined)
+        throw new Error("report requires --case <name.mincase>");
+      const caseDirectory = resolve(casePath);
+      const outputPath = resolve(
+        optionValue(commandArgs, "--out") ?? join(caseDirectory, "report.html"),
+      );
+      const manifest = readMinCaseManifest(caseDirectory);
+      const proof = JSON.parse(
+        readFileSync(join(caseDirectory, "artifacts", "proof.json"), "utf8"),
+      ) as unknown;
+      const redaction = RedactionProofSchema.parse(
+        parse(readFileSync(join(caseDirectory, "redaction.yaml"), "utf8")),
+      );
+      const report = generateStaticReport({ manifest, proof, redaction });
+      if (hasBlockingFindings(scanText(report, "report.html"))) {
+        throw new SafetyBlockedError(
+          "Report generation blocked because sensitive content was detected",
+        );
+      }
+      writeFileSync(outputPath, report, "utf8");
+      writeResult(
+        io,
+        commandArgs.includes("--json"),
+        { command: "report", output: outputPath },
+        `Created ${outputPath}`,
+      );
+      return EXIT_CODES.success;
+    }
+
+    if (command === "redact" && args[1] === "--check") {
+      const commandArgs = args.slice(2);
+      const target = commandArgs.find((argument) => !argument.startsWith("-"));
+      if (target === undefined)
+        throw new Error("redact --check requires <path>");
+      const findings = scanPath(resolve(target));
+      const summary = {
+        checked: resolve(target),
+        findingCount: findings.length,
+        blockingCount: findings.filter((finding) => finding.blocking).length,
+        findings,
+      };
+      writeResult(
+        io,
+        commandArgs.includes("--json"),
+        summary,
+        `${summary.blockingCount === 0 ? "PASSED" : "BLOCKED"}: ${summary.findingCount} finding(s)`,
+      );
+      return summary.blockingCount === 0
+        ? EXIT_CODES.success
+        : EXIT_CODES.safetyBlocked;
     }
 
     if (command === "verify") {
@@ -463,7 +563,9 @@ export async function runCli(
     io.stderr.write(`Unknown command: ${command}\n`);
     return EXIT_CODES.usage;
   } catch (error) {
-    const safetyBlocked = error instanceof SensitiveContentError;
+    const safetyBlocked =
+      error instanceof SensitiveContentError ||
+      error instanceof SafetyBlockedError;
     io.stderr.write(
       `${JSON.stringify({
         error: error instanceof Error ? error.message : String(error),

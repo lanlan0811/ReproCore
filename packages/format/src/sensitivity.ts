@@ -6,12 +6,14 @@ export type SecretKind =
 export interface SecretFinding {
   kind: SecretKind;
   offset: number;
+  length: number;
 }
 
 const SECRET_RULES: ReadonlyArray<{ kind: SecretKind; pattern: RegExp }> = [
   {
     kind: "private_key",
-    pattern: /-----BEGIN (?:[A-Z ]+ )?PRIVATE KEY-----/giu,
+    pattern:
+      /-----BEGIN (?:[A-Z ]+ )?PRIVATE KEY-----[\s\S]*?-----END (?:[A-Z ]+ )?PRIVATE KEY-----/gu,
   },
   {
     kind: "authorization",
@@ -42,7 +44,11 @@ export function scanSecretCandidates(text: string): SecretFinding[] {
   for (const rule of SECRET_RULES) {
     rule.pattern.lastIndex = 0;
     for (const match of text.matchAll(rule.pattern)) {
-      findings.push({ kind: rule.kind, offset: match.index });
+      findings.push({
+        kind: rule.kind,
+        offset: match.index,
+        length: match[0].length,
+      });
     }
   }
   return findings.sort((left, right) => left.offset - right.offset);

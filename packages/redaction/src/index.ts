@@ -1,2 +1,2 @@
-/** Internal redaction package metadata. */
-export const packageName = "@reprocore/redaction" as const;
+export * from "./redact.js";
+export * from "./scanner.js";

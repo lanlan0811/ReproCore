@@ -8,3 +8,10 @@ export const EXIT_CODES = {
   unresolved: 4,
   flakyUnsupported: 5,
 } as const;
+
+export class SafetyBlockedError extends Error {
+  public constructor(message: string) {
+    super(message);
+    this.name = "SafetyBlockedError";
+  }
+}

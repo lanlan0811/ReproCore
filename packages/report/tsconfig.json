@@ -5,5 +5,6 @@
     "rootDir": "src",
     "tsBuildInfoFile": "../../node_modules/.cache/reprocore/report.tsbuildinfo"
   },
-  "include": ["src/**/*.ts"]
+  "include": ["src/**/*.ts"],
+  "references": [{ "path": "../format" }, { "path": "../redaction" }]
 }

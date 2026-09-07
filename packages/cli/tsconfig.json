@@ -12,6 +12,8 @@
     { "path": "../minimizer" },
     { "path": "../oracles" },
     { "path": "../protocol-mcp" },
+    { "path": "../redaction" },
+    { "path": "../report" },
     { "path": "../replay" }
   ]
 }

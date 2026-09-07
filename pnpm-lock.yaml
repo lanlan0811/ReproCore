@@ -62,9 +62,15 @@ importers:
       '@reprocore/protocol-mcp':
         specifier: workspace:*
         version: link:../protocol-mcp
+      '@reprocore/redaction':
+        specifier: workspace:*
+        version: link:../redaction
       '@reprocore/replay':
         specifier: workspace:*
         version: link:../replay
+      '@reprocore/report':
+        specifier: workspace:*
+        version: link:../report
       yaml:
         specifier: ^2.8.1
         version: 2.9.0
@@ -118,7 +124,14 @@ importers:
         specifier: workspace:*
         version: link:../format
 
-  packages/redaction: {}
+  packages/redaction:
+    dependencies:
+      '@reprocore/format':
+        specifier: workspace:*
+        version: link:../format
+      zod:
+        specifier: ^4.1.5
+        version: 4.5.4
 
   packages/replay:
     dependencies:
@@ -132,7 +145,14 @@ importers:
         specifier: ^4.1.5
         version: 4.5.4
 
-  packages/report: {}
+  packages/report:
+    dependencies:
+      '@reprocore/format':
+        specifier: workspace:*
+        version: link:../format
+      '@reprocore/redaction':
+        specifier: workspace:*
+        version: link:../redaction
 
 packages:
 

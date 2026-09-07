@@ -1,3 +1,6 @@
-# reprocore
+# ReproCore CLI
 
-The public ReproCore CLI package. The v0.1.0 MVP is under active development.
+Install the public CLI with `npm install --global reprocore`, then run
+`reprocore --help`. ReproCore captures MCP stdio sessions, verifies failure
+Oracles, minimizes fixtures, performs two-pass redaction, and produces portable
+`.mincase.zip` archives with offline HTML reports.

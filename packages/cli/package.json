@@ -34,6 +34,8 @@
     "@reprocore/minimizer": "workspace:*",
     "@reprocore/oracles": "workspace:*",
     "@reprocore/protocol-mcp": "workspace:*",
+    "@reprocore/redaction": "workspace:*",
+    "@reprocore/report": "workspace:*",
     "@reprocore/replay": "workspace:*",
     "yaml": "^2.8.1"
   }
