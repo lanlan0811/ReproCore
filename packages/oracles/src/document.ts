@@ -37,6 +37,7 @@ const TimeoutRuleSchema = z
 const JsonSchemaRuleSchema = z
   .object({
     kind: z.literal("json_schema_invalid"),
+    target: z.enum(["last_request", "last_response"]).optional(),
     schema: z.record(z.string(), z.unknown()),
   })
   .strict();
@@ -44,6 +45,7 @@ const JsonSchemaRuleSchema = z
 const JsonPointerRuleSchema = z
   .object({
     kind: z.literal("json_pointer"),
+    target: z.enum(["last_request", "last_response"]).optional(),
     pointer: z.string().startsWith("/"),
     operator: z.enum(["equals", "not_equals", "exists", "missing"]),
     value: z.unknown().optional(),

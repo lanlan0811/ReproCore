@@ -47,6 +47,9 @@ importers:
       '@reprocore/capture-stdio':
         specifier: workspace:*
         version: link:../capture-stdio
+      '@reprocore/format':
+        specifier: workspace:*
+        version: link:../format
       '@reprocore/minimizer':
         specifier: workspace:*
         version: link:../minimizer

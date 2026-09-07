@@ -4,6 +4,7 @@ import {
   type Minimality,
 } from "@reprocore/format";
 import { dependencyClosure, type DependencyGraph } from "./dependencies.js";
+import type { CandidateCacheLike } from "./cache.js";
 
 export interface TransactionUnit {
   transactionId: string;
@@ -25,6 +26,8 @@ export interface MinimizeOptions<T extends TransactionUnit> {
   validate?: (candidate: readonly T[]) => boolean;
   maxTests?: number;
   maxDurationMs?: number;
+  cache?: CandidateCacheLike;
+  cacheNamespace?: string;
 }
 
 export interface MinimizeResult<T extends TransactionUnit> {
@@ -90,6 +93,24 @@ export async function minimizeTransactions<T extends TransactionUnit>(
     candidate: readonly T[],
     removedIds: string[],
   ): Promise<CandidateResult> => {
+    const candidateHash = sha256(
+      `${options.cacheNamespace ?? "transactions-v1"}\n${candidate
+        .map((item) => item.transactionId)
+        .join("\n")}`,
+    );
+    const cached = options.cache?.get(candidateHash);
+    if (cached !== undefined) {
+      ledger.push({
+        candidateHash,
+        transactionIds: candidate.map((item) => item.transactionId),
+        removedIds,
+        result: cached.result,
+        valid: true,
+        durationMs: cached.durationMs,
+        cacheHit: true,
+      });
+      return cached.result;
+    }
     if (testCount >= maxTests || Date.now() - startedAt >= maxDurationMs) {
       budgetExhausted = true;
       return "UNRESOLVED";
@@ -101,9 +122,7 @@ export async function minimizeTransactions<T extends TransactionUnit>(
       : "UNRESOLVED";
     testCount += 1;
     ledger.push({
-      candidateHash: sha256(
-        candidate.map((item) => item.transactionId).join("\n"),
-      ),
+      candidateHash,
       transactionIds: candidate.map((item) => item.transactionId),
       removedIds,
       result: candidateResult,
@@ -111,6 +130,12 @@ export async function minimizeTransactions<T extends TransactionUnit>(
       durationMs: Date.now() - began,
       cacheHit: false,
     });
+    if (valid) {
+      options.cache?.set(candidateHash, {
+        result: candidateResult,
+        durationMs: Date.now() - began,
+      });
+    }
     return candidateResult;
   };
 

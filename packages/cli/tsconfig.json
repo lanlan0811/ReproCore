@@ -8,6 +8,7 @@
   "include": ["src/**/*.ts"],
   "references": [
     { "path": "../capture-stdio" },
+    { "path": "../format" },
     { "path": "../minimizer" },
     { "path": "../oracles" },
     { "path": "../replay" }

@@ -5,7 +5,9 @@ import {
   captureProcess,
   SensitiveContentError,
 } from "@reprocore/capture-stdio";
+import { sha256 } from "@reprocore/format";
 import {
+  CandidateCache,
   minimizeTransactions,
   type DependencyGraph,
   type TransactionUnit,
@@ -24,6 +26,7 @@ import {
   verifyBaseline,
 } from "@reprocore/replay";
 import { EXIT_CODES, VERSION } from "./index.js";
+import { minimizeFixtureJson } from "./minimize-fixture.js";
 
 const HELP = `ReproCore ${VERSION}
 
@@ -289,10 +292,20 @@ export async function runCli(
         throw new Error("--budget-ms must be a positive integer");
       }
 
+      using cache = new CandidateCache(
+        resolve(
+          optionValue(commandArgs, "--cache") ?? ".reprocore/candidates.sqlite",
+        ),
+      );
+      const minimizationStarted = Date.now();
       const result = await minimizeTransactions(transactions, {
         dependencyGraph: fixtureDependencyGraph(fixture, transactions),
         maxTests,
         maxDurationMs,
+        cache,
+        cacheNamespace: sha256(
+          JSON.stringify({ fixture, oracle, stage: "transactions-v1" }),
+        ),
         validate: (candidate) => candidate.length > 0,
         test: async (candidate) => {
           const candidateFixture: ReplayFixture = {
@@ -311,10 +324,23 @@ export async function runCli(
           (transaction) => transaction.exchange,
         ),
       };
+      const structure = await minimizeFixtureJson(minimizedFixture, oracle, {
+        cache,
+        maxTests: Math.max(0, maxTests - result.testCount),
+        maxDurationMs: Math.max(
+          0,
+          maxDurationMs - (Date.now() - minimizationStarted),
+        ),
+      });
+      const minimality =
+        result.minimality === "oneMinimal" &&
+        structure.minimality === "oneMinimal"
+          ? "oneMinimal"
+          : "budgetExhausted";
       const resolvedOutput = resolve(outputPath);
       writeFileSync(
         resolvedOutput,
-        `${JSON.stringify(minimizedFixture, null, 2)}\n`,
+        `${JSON.stringify(structure.fixture, null, 2)}\n`,
         {
           encoding: "utf8",
           flag: "wx",
@@ -323,15 +349,32 @@ export async function runCli(
       const proofPath = resolve(
         optionValue(commandArgs, "--proof") ?? `${outputPath}.proof.json`,
       );
-      writeFileSync(proofPath, `${JSON.stringify(result, null, 2)}\n`, {
-        encoding: "utf8",
-        flag: "wx",
-      });
+      writeFileSync(
+        proofPath,
+        `${JSON.stringify(
+          {
+            version: 1,
+            transaction: result,
+            structure: {
+              ledgers: structure.ledgers,
+              originalFieldCount: structure.originalFieldCount,
+              finalFieldCount: structure.finalFieldCount,
+              fieldReductionRate: structure.fieldReductionRate,
+              minimality: structure.minimality,
+              testCount: structure.testCount,
+            },
+          },
+          null,
+          2,
+        )}\n`,
+        { encoding: "utf8", flag: "wx" },
+      );
       const summary = {
         originalCount: result.originalCount,
         finalCount: result.finalCount,
         reductionRate: result.reductionRate,
-        minimality: result.minimality,
+        fieldReductionRate: structure.fieldReductionRate,
+        minimality,
         output: resolvedOutput,
         proof: proofPath,
       };
@@ -339,9 +382,9 @@ export async function runCli(
         io,
         commandArgs.includes("--json"),
         summary,
-        `${result.minimality}: ${result.originalCount} -> ${result.finalCount} transactions`,
+        `${minimality}: ${result.originalCount} -> ${result.finalCount} transactions`,
       );
-      return result.minimality === "oneMinimal"
+      return minimality === "oneMinimal"
         ? EXIT_CODES.success
         : EXIT_CODES.unresolved;
     }

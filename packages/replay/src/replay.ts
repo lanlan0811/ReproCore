@@ -74,6 +74,7 @@ export function runFixtureReplay(fixture: ReplayFixture): ReplayRun {
   );
   const observation: OracleObservation = {
     messages: responses,
+    requestMessages: fixture.exchanges.map((exchange) => exchange.request),
     toolCalls,
     fileHashes,
     effects: fixture.observation.effects ?? [],

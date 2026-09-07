@@ -7,6 +7,7 @@ export interface OracleObservation {
   timedOut?: boolean;
   durationMs?: number;
   messages?: unknown[];
+  requestMessages?: unknown[];
   toolCalls?: string[];
   fileHashes?: Record<string, string>;
   effects?: string[];
@@ -84,7 +85,10 @@ function evaluateRule(
       );
     }
     case "json_schema_invalid": {
-      const message = observation.messages?.at(-1);
+      const message =
+        rule.target === "last_request"
+          ? observation.requestMessages?.at(-1)
+          : observation.messages?.at(-1);
       if (message === undefined)
         return unresolved(rule.kind, "response message unavailable");
       const validate = compileJsonSchema(rule.schema);
@@ -95,7 +99,10 @@ function evaluateRule(
       );
     }
     case "json_pointer": {
-      const message = observation.messages?.at(-1);
+      const message =
+        rule.target === "last_request"
+          ? observation.requestMessages?.at(-1)
+          : observation.messages?.at(-1);
       if (message === undefined)
         return unresolved(rule.kind, "response message unavailable");
       const pointer = jsonPointer(message, rule.pointer);
