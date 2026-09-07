@@ -34,8 +34,8 @@ jobs:
     needs: preflight
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: pnpm/action-setup@v4
+      - uses: actions/checkout@v6
+      - uses: pnpm/action-setup@v6
         with:
           version: 11.25.0
       - uses: actions/setup-node@v6
@@ -56,7 +56,7 @@ jobs:
       - run: pnpm build
       - run: pnpm pack:cli
       - run: pnpm smoke:install
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: release-npm
           path: release/*.tgz
@@ -81,8 +81,8 @@ jobs:
             artifact: linux
     runs-on: ${{ matrix.os }}
     steps:
-      - uses: actions/checkout@v4
-      - uses: pnpm/action-setup@v4
+      - uses: actions/checkout@v6
+      - uses: pnpm/action-setup@v6
         with:
           version: 11.25.0
       - uses: actions/setup-node@v6
@@ -120,7 +120,7 @@ jobs:
           version="$(node -p "require('./packages/cli/package.json').version")"
           mkdir -p release
           tar --sort=name --owner=0 --group=0 --numeric-owner -czf "release/reprocore-$version-linux.tar.gz" -C staging "reprocore-$version"
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: release-${{ matrix.artifact }}
           path: release/*
@@ -144,8 +144,8 @@ jobs:
       GITEE_TARGET_COMMITISH: ${{ github.sha }}
       RELEASE_DIRECTORY: ${{ github.workspace }}/release
     steps:
-      - uses: actions/checkout@v4
-      - uses: pnpm/action-setup@v4
+      - uses: actions/checkout@v6
+      - uses: pnpm/action-setup@v6
         with:
           version: 11.25.0
       - uses: actions/setup-node@v6
@@ -154,7 +154,7 @@ jobs:
           cache: pnpm
           registry-url: https://registry.npmjs.org
       - run: pnpm install --frozen-lockfile
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@v7
         with:
           pattern: release-*
           path: release
