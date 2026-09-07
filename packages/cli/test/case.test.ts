@@ -152,6 +152,7 @@ describe("portable mincase packaging", () => {
     expect(first.manifest.finalVerification).toEqual({ repeat: 5, passed: 5 });
     expect(first.manifest.redactionVerified).toBe(true);
     expect(first.manifest.exportConfirmed).toBe(true);
+    expect(Object.keys(first.manifest.artifactHashes)).toHaveLength(8);
     expect(
       readFileSync(join(first.caseDirectory, "report.html"), "utf8"),
     ).toContain("default-src 'none'");
@@ -165,6 +166,18 @@ describe("portable mincase packaging", () => {
       { cwd: first.caseDirectory, encoding: "utf8", windowsHide: true },
     );
     expect(regression.status, regression.stderr).toBe(0);
+
+    const regressionPath = join(
+      first.caseDirectory,
+      "runner",
+      "regression.test.mjs",
+    );
+    const regressionSource = readFileSync(regressionPath, "utf8");
+    writeFileSync(regressionPath, `${regressionSource}\n// tampered\n`);
+    expect(() => verifyMinCase(first.caseDirectory)).toThrow(
+      "Artifact hash does not match manifest",
+    );
+    writeFileSync(regressionPath, regressionSource);
 
     writeFileSync(join(first.caseDirectory, "trace.jsonl"), "tampered\n");
     expect(() => verifyMinCase(first.caseDirectory)).toThrow(

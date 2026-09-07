@@ -36,6 +36,8 @@
 - 独立回归 runner 补齐常用 JSON Schema 2020-12 语义；无法等价支持的 Schema 自动
   生成 `explanatory` 案例。
 - `.mincase` 导入与打包使用完整文件清单，拒绝任意目录中的未知附件或缺失标准文件。
+- manifest 覆盖所有标准制品哈希，`verify` 可检测 runner、报告、Schema、来源与脱敏
+  证明的内容篡改。
 - CLI 统一拒绝未知、重复及缺失值参数；`capture` 的任意 server 失败码稳定映射为
   ReproCore 执行失败码 1，同时在 JSON 摘要中保留原始 `serverExitCode`。
 

@@ -82,6 +82,21 @@ export type CaseType = z.infer<typeof CaseTypeSchema>;
 export const MinimalitySchema = z.enum(["oneMinimal", "budgetExhausted"]);
 export type Minimality = z.infer<typeof MinimalitySchema>;
 
+const ContentHashSchema = z.string().regex(/^sha256:[a-f0-9]{64}$/u);
+
+const ArtifactHashesSchema = z
+  .object({
+    "package.json": ContentHashSchema,
+    "provenance.json": ContentHashSchema,
+    "redaction.yaml": ContentHashSchema,
+    "report.html": ContentHashSchema,
+    "runner/oracle.json": ContentHashSchema,
+    "runner/regression.test.mjs": ContentHashSchema,
+    "runner/replay-server.mjs": ContentHashSchema,
+    "schemas/replay-fixture.schema.json": ContentHashSchema,
+  })
+  .strict();
+
 export const MinCaseManifestSchema = z
   .object({
     formatVersion: z.string(),
@@ -93,10 +108,11 @@ export const MinCaseManifestSchema = z
     finalTransactionCount: z.number().int().nonnegative(),
     originalFieldCount: z.number().int().nonnegative(),
     finalFieldCount: z.number().int().nonnegative(),
-    oracleHash: z.string().regex(/^sha256:[a-f0-9]{64}$/u),
-    fixtureHash: z.string().regex(/^sha256:[a-f0-9]{64}$/u),
-    proofHash: z.string().regex(/^sha256:[a-f0-9]{64}$/u),
-    traceHash: z.string().regex(/^sha256:[a-f0-9]{64}$/u),
+    oracleHash: ContentHashSchema,
+    fixtureHash: ContentHashSchema,
+    proofHash: ContentHashSchema,
+    traceHash: ContentHashSchema,
+    artifactHashes: ArtifactHashesSchema,
     reducerSet: z.array(z.string()).min(1),
     baseline: z.object({
       repeat: z.number().int().positive(),

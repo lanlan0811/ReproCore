@@ -1,5 +1,6 @@
 import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { basename, dirname, join, resolve } from "node:path";
+import { isDeepStrictEqual } from "node:util";
 import {
   createDeterministicMinCaseZip,
   FORMAT_VERSION,
@@ -19,6 +20,7 @@ import {
 import { getProtocolProfile } from "@reprocore/protocol-mcp";
 import {
   hasBlockingFindings,
+  RedactionProofSchema,
   scanText,
   type RedactionProof,
 } from "@reprocore/redaction";
@@ -28,7 +30,7 @@ import {
   verifyBaseline,
   type ReplayFixture,
 } from "@reprocore/replay";
-import { stringify } from "yaml";
+import { parse, stringify } from "yaml";
 import {
   CliInputError,
   SafetyBlockedError,
@@ -406,8 +408,9 @@ export function createMinCase(options: CreateCaseOptions): CreatedCase {
   if (basename(caseDirectory) !== `${name}.mincase`) {
     throw new CliInputError(`case directory must be named ${name}.mincase`);
   }
+  const parsedOracle = OracleDocumentSchema.parse(options.oracle);
   const fixture = JSON.stringify(options.fixture, null, 2) + "\n";
-  const oracle = stringify(OracleDocumentSchema.parse(options.oracle));
+  const oracle = stringify(parsedOracle);
   const proof = JSON.stringify(options.proof, null, 2) + "\n";
   const trace =
     options.fixture.exchanges
@@ -416,12 +419,12 @@ export function createMinCase(options: CreateCaseOptions): CreatedCase {
       )
       .join("\n") + "\n";
   const summary = proofSummary(options.proof);
-  const baseline = verifyBaseline(options.fixture, options.oracle, 3);
-  const finalVerification = verifyBaseline(options.fixture, options.oracle, 5);
-  const hasCustomScript = options.oracle.rules.some(
+  const baseline = verifyBaseline(options.fixture, parsedOracle, 3);
+  const finalVerification = verifyBaseline(options.fixture, parsedOracle, 5);
+  const hasCustomScript = parsedOracle.rules.some(
     (rule) => rule.kind === "custom_script",
   );
-  const standaloneSchemaCompatible = options.oracle.rules.every(
+  const standaloneSchemaCompatible = parsedOracle.rules.every(
     (rule) =>
       rule.kind !== "json_schema_invalid" ||
       supportsStandaloneSchema(rule.schema),
@@ -450,7 +453,41 @@ export function createMinCase(options: CreateCaseOptions): CreatedCase {
     finalVerification.status === "STABLE" &&
     redaction.verified &&
     options.exportConfirmed;
-  const manifest: MinCaseManifest = MinCaseManifestSchema.parse({
+  const fixtureHash = sha256(fixture);
+  const oracleHash = sha256(oracle);
+  const proofHash = sha256(proof);
+  const traceHash = sha256(trace);
+  const provenance =
+    JSON.stringify(
+      {
+        version: 1,
+        generatedBy: `reprocore@${VERSION}`,
+        node: ">=22.13.0",
+        fixtureHash,
+        oracleHash,
+        proofHash,
+        traceHash,
+        standaloneRegressionCompatible: standaloneSchemaCompatible,
+      },
+      null,
+      2,
+    ) + "\n";
+  const redactionDocument = stringify(redaction);
+  const packageDocument =
+    JSON.stringify(
+      {
+        name: "reprocore-mincase",
+        version: "0.0.0",
+        private: true,
+        type: "module",
+        scripts: { test: "node --test runner/regression.test.mjs" },
+      },
+      null,
+      2,
+    ) + "\n";
+  const schemaDocument = JSON.stringify(REPLAY_FIXTURE_SCHEMA, null, 2) + "\n";
+  const runnerOracle = JSON.stringify(parsedOracle, null, 2) + "\n";
+  const manifestFields = {
     formatVersion: FORMAT_VERSION,
     name,
     caseType: executable ? "executable" : "explanatory",
@@ -460,10 +497,10 @@ export function createMinCase(options: CreateCaseOptions): CreatedCase {
     finalTransactionCount: summary.finalTransactionCount,
     originalFieldCount: summary.originalFieldCount,
     finalFieldCount: summary.finalFieldCount,
-    oracleHash: sha256(oracle),
-    fixtureHash: sha256(fixture),
-    proofHash: sha256(proof),
-    traceHash: sha256(trace),
+    oracleHash,
+    fixtureHash,
+    proofHash,
+    traceHash,
     reducerSet: ["transaction-ddmin-v1", "schema-json-v1", "unused-tools-v1"],
     baseline: {
       repeat: 3,
@@ -480,28 +517,38 @@ export function createMinCase(options: CreateCaseOptions): CreatedCase {
     redactionVerified: redaction.verified && redaction.replayVerified,
     sensitivity: redaction.substitutions.length === 0 ? "metadata" : "content",
     exportConfirmed: options.exportConfirmed,
-  });
-
-  const provenance =
-    JSON.stringify(
-      {
-        version: 1,
-        generatedBy: `reprocore@${VERSION}`,
-        node: ">=22.13.0",
-        fixtureHash: manifest.fixtureHash,
-        oracleHash: manifest.oracleHash,
-        proofHash: manifest.proofHash,
-        traceHash: manifest.traceHash,
-        standaloneRegressionCompatible: standaloneSchemaCompatible,
-      },
-      null,
-      2,
-    ) + "\n";
+  } as const;
   const report = generateStaticReport({
-    manifest,
+    manifest: manifestFields,
     proof: options.proof,
     redaction,
   });
+  const manifest: MinCaseManifest = MinCaseManifestSchema.parse({
+    ...manifestFields,
+    artifactHashes: {
+      "package.json": sha256(packageDocument),
+      "provenance.json": sha256(provenance),
+      "redaction.yaml": sha256(redactionDocument),
+      "report.html": sha256(report),
+      "runner/oracle.json": sha256(runnerOracle),
+      "runner/regression.test.mjs": sha256(REGRESSION_TEST),
+      "runner/replay-server.mjs": sha256(REPLAY_SERVER),
+      "schemas/replay-fixture.schema.json": sha256(schemaDocument),
+    },
+  });
+  const finalExportScan = [
+    packageDocument,
+    provenance,
+    redactionDocument,
+    report,
+    runnerOracle,
+    schemaDocument,
+  ].flatMap((content, index) => scanText(content, `artifact-${index}`));
+  if (hasBlockingFindings(finalExportScan)) {
+    throw new SafetyBlockedError(
+      "Export blocked because a generated artifact contains sensitive content",
+    );
+  }
 
   mkdirSync(dirname(caseDirectory), { recursive: true });
   mkdirSync(caseDirectory);
@@ -510,32 +557,16 @@ export function createMinCase(options: CreateCaseOptions): CreatedCase {
   writeExclusive(join(caseDirectory, "trace.jsonl"), trace);
   writeExclusive(join(caseDirectory, "oracle.yaml"), oracle);
   writeExclusive(join(caseDirectory, "provenance.json"), provenance);
-  writeExclusive(join(caseDirectory, "redaction.yaml"), stringify(redaction));
+  writeExclusive(join(caseDirectory, "redaction.yaml"), redactionDocument);
   writeExclusive(join(caseDirectory, "report.html"), report);
-  writeExclusive(
-    join(caseDirectory, "package.json"),
-    JSON.stringify(
-      {
-        name: "reprocore-mincase",
-        version: "0.0.0",
-        private: true,
-        type: "module",
-        scripts: { test: "node --test runner/regression.test.mjs" },
-      },
-      null,
-      2,
-    ) + "\n",
-  );
+  writeExclusive(join(caseDirectory, "package.json"), packageDocument);
   writeExclusive(join(caseDirectory, "fixtures", "replay.json"), fixture);
   writeExclusive(join(caseDirectory, "artifacts", "proof.json"), proof);
   writeExclusive(
     join(caseDirectory, "schemas", "replay-fixture.schema.json"),
-    JSON.stringify(REPLAY_FIXTURE_SCHEMA, null, 2) + "\n",
+    schemaDocument,
   );
-  writeExclusive(
-    join(caseDirectory, "runner", "oracle.json"),
-    JSON.stringify(options.oracle, null, 2) + "\n",
-  );
+  writeExclusive(join(caseDirectory, "runner", "oracle.json"), runnerOracle);
   writeExclusive(
     join(caseDirectory, "runner", "replay-server.mjs"),
     REPLAY_SERVER,
@@ -553,12 +584,20 @@ export function verifyMinCase(
   repeat = 5,
 ): VerifyCaseResult {
   const root = resolve(caseDirectory);
-  validateMinCaseDirectory(root);
+  const files = validateMinCaseDirectory(root);
   const manifest = readMinCaseManifest(root);
   const fixturePath = join(root, "fixtures", "replay.json");
   const oraclePath = join(root, "oracle.yaml");
   const proofPath = join(root, "artifacts", "proof.json");
   const tracePath = join(root, "trace.jsonl");
+  for (const [path, expected] of Object.entries(manifest.artifactHashes)) {
+    const content = files.get(path);
+    if (content === undefined || sha256(content) !== expected) {
+      throw new VerificationError(
+        `Artifact hash does not match manifest: ${path}`,
+      );
+    }
+  }
   if (sha256(readFileSync(fixturePath)) !== manifest.fixtureHash) {
     throw new VerificationError("Fixture hash does not match manifest");
   }
@@ -573,6 +612,23 @@ export function verifyMinCase(
   }
   const fixture = readReplayFixture(fixturePath);
   const oracle = readOracleDocument(oraclePath);
+  const runnerOracle = OracleDocumentSchema.parse(
+    JSON.parse(readFileSync(join(root, "runner", "oracle.json"), "utf8")),
+  );
+  if (!isDeepStrictEqual(runnerOracle, oracle)) {
+    throw new VerificationError("Runner Oracle does not match oracle.yaml");
+  }
+  const redaction = RedactionProofSchema.parse(
+    parse(readFileSync(join(root, "redaction.yaml"), "utf8")),
+  );
+  if (
+    manifest.redactionVerified !==
+    (redaction.verified && redaction.replayVerified)
+  ) {
+    throw new VerificationError(
+      "Redaction proof does not match the manifest verification state",
+    );
+  }
   const verification = verifyBaseline(fixture, oracle, repeat);
   const passed = verification.evaluations.filter(
     (entry) => entry.result === "INTERESTING",

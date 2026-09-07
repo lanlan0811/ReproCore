@@ -38,6 +38,8 @@ the same major version. The manifest also records:
 - the original protocol profile, lifecycle, discovery method, and log-transport semantics;
 - transaction and JSON-field counts before and after reduction;
 - `sha256:` hashes for the fixture, Oracle, proof, and trace;
+- a complete artifact-hash table for package, provenance, redaction proof,
+  report, Schema, and runner files;
 - reducer identities, the 3/3 baseline, and the final 5/5 verification; and
 - redaction verification, sensitivity, and explicit export confirmation.
 

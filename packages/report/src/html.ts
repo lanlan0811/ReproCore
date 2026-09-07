@@ -2,7 +2,21 @@ import type { MinCaseManifest } from "@reprocore/format";
 import type { RedactionProof } from "@reprocore/redaction";
 
 export interface StaticReportInput {
-  manifest: MinCaseManifest;
+  manifest: Pick<
+    MinCaseManifest,
+    | "baseline"
+    | "caseType"
+    | "finalFieldCount"
+    | "finalTransactionCount"
+    | "finalVerification"
+    | "fixtureHash"
+    | "minimality"
+    | "name"
+    | "oracleHash"
+    | "originalFieldCount"
+    | "originalTransactionCount"
+    | "protocolProfile"
+  >;
   proof: unknown;
   redaction: RedactionProof;
 }

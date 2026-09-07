@@ -36,6 +36,7 @@ name.mincase/
 - 原始协议档案及生命周期、发现方法、日志传输语义。
 - 缩减前后事务数和 JSON 字段数。
 - fixture、Oracle、proof、trace 的 `sha256:` 哈希。
+- package、来源、脱敏证明、报告、Schema 与 runner 文件的完整制品哈希表。
 - reducer 集合、3/3 基线、5/5 最终验证。
 - 脱敏复验、敏感级别和用户导出确认状态。
 
