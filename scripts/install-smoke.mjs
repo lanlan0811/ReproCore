@@ -1,11 +1,15 @@
-import { existsSync, mkdtempSync, rmSync } from "node:fs";
+import { existsSync, mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { spawnSync } from "node:child_process";
 
-const tarballArgument = process.argv[2];
-if (tarballArgument === undefined) throw new Error("Tarball path is required");
-const tarball = resolve(tarballArgument);
+const packageMetadata = JSON.parse(
+  readFileSync(resolve("packages/cli/package.json"), "utf8"),
+);
+const tarball = resolve(
+  process.argv[2] ??
+    join("release", `${packageMetadata.name}-${packageMetadata.version}.tgz`),
+);
 const workspace = mkdtempSync(join(tmpdir(), "reprocore-install-smoke-"));
 
 try {
@@ -44,7 +48,10 @@ try {
     encoding: "utf8",
     windowsHide: true,
   });
-  if (version.status !== 0 || version.stdout.trim() !== "0.1.0") {
+  if (
+    version.status !== 0 ||
+    version.stdout.trim() !== packageMetadata.version
+  ) {
     throw new Error(
       version.stderr || `Unexpected CLI version: ${version.stdout}`,
     );

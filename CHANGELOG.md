@@ -14,6 +14,8 @@
 - 确定性 `.mincase.zip`、独立回归测试、双阶段脱敏与静态 HTML 报告。
 - 30 个 seeded failure、5 个许可证明确的公开适配案例和逐核心包覆盖率门禁。
 - 中英文 README、安装、CLI、架构、安全、格式、贡献、治理和行为准则文档。
+- npm、Windows、macOS、Linux 三平台产物、SBOM、校验和、来源证明及 GitHub/Gitee
+  镜像发布工作流。
 
 ### Security
 

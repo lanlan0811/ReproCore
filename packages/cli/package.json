@@ -3,6 +3,18 @@
   "version": "0.1.0",
   "description": "Minimize MCP failures into safe, executable reproduction cases",
   "license": "AGPL-3.0-only",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/lanlan0811/ReproCore.git"
+  },
+  "homepage": "https://github.com/lanlan0811/ReproCore#readme",
+  "bugs": {
+    "url": "https://github.com/lanlan0811/ReproCore/issues"
+  },
+  "publishConfig": {
+    "access": "public",
+    "provenance": true
+  },
   "type": "module",
   "bin": {
     "reprocore": "./dist/cli.cjs"

@@ -34,6 +34,7 @@ jobs:
       - run: pnpm test:coverage
       - run: pnpm build
       - run: pnpm pack:cli
+      - run: pnpm release:metadata
       - run: pnpm smoke:install
 
   node-22-compatibility:

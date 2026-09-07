@@ -85,6 +85,7 @@ methodology are documented in [benchmarking](docs/benchmarking.md).
 - [Architecture](docs/architecture.md)
 - [Security model](docs/security.md)
 - [`.mincase` format](docs/mincase-format.md)
+- [Release process](docs/releasing.md)
 - [Contributing](CONTRIBUTING.md)
 - [Governance](GOVERNANCE.md)
 - [Code of Conduct](CODE_OF_CONDUCT.md)

@@ -5,25 +5,199 @@ on:
     tags: ["v*"]
 
 permissions:
-  contents: write
-  id-token: write
-  attestations: write
+  contents: read
 
 jobs:
+  preflight:
+    name: Publishing configuration preflight
+    runs-on: ubuntu-latest
+    env:
+      NPM_TOKEN: ${{ secrets.NPM_TOKEN }}
+      GITEE_ACCESS_TOKEN: ${{ secrets.GITEE_ACCESS_TOKEN }}
+      GITEE_OWNER: ${{ vars.GITEE_OWNER }}
+      GITEE_REPO: ${{ vars.GITEE_REPO }}
+    steps:
+      - name: Require every publishing credential and destination
+        shell: bash
+        run: |
+          missing=0
+          for name in NPM_TOKEN GITEE_ACCESS_TOKEN GITEE_OWNER GITEE_REPO; do
+            if [ -z "${!name}" ]; then
+              echo "::error title=Missing release configuration::$name is required"
+              missing=1
+            fi
+          done
+          exit "$missing"
+
   validate:
+    name: Validate release candidate
+    needs: preflight
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
       - uses: pnpm/action-setup@v4
         with:
           version: 11.25.0
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v6
         with:
           node-version: 24
           cache: pnpm
       - run: pnpm install --frozen-lockfile
-      - name: Validate tag and package version
+      - name: Validate tag and package versions
         shell: bash
-        run: test "${GITHUB_REF_NAME#v}" = "$(node -p \"require('./packages/cli/package.json').version\")"
+        run: |
+          cli_version="$(node -p "require('./packages/cli/package.json').version")"
+          workspace_version="$(node -p "require('./package.json').version")"
+          test "${GITHUB_REF_NAME#v}" = "$cli_version"
+          test "$workspace_version" = "$cli_version"
       - run: pnpm verify
+      - run: pnpm test:coverage
+      - run: pnpm benchmark
       - run: pnpm build
+      - run: pnpm pack:cli
+      - run: pnpm smoke:install
+      - uses: actions/upload-artifact@v4
+        with:
+          name: release-npm
+          path: release/*.tgz
+          if-no-files-found: error
+          retention-days: 7
+
+  platform-archives:
+    name: Build ${{ matrix.label }} archive
+    needs: preflight
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: windows-latest
+            label: Windows
+            artifact: windows
+          - os: macos-latest
+            label: macOS universal
+            artifact: macos-universal
+          - os: ubuntu-latest
+            label: Linux
+            artifact: linux
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 11.25.0
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 24
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm build
+      - name: Stage portable CLI
+        shell: pwsh
+        run: |
+          $version = node -p "require('./packages/cli/package.json').version"
+          $bundle = Join-Path staging "reprocore-$version"
+          New-Item -ItemType Directory -Force -Path $bundle | Out-Null
+          Copy-Item -Recurse packages/cli/dist (Join-Path $bundle dist)
+          Copy-Item packages/cli/package.json, packages/cli/README.md, LICENSE $bundle
+      - name: Create Windows ZIP
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          $version = node -p "require('./packages/cli/package.json').version"
+          New-Item -ItemType Directory -Force -Path release | Out-Null
+          Compress-Archive -Path "staging/reprocore-$version" -DestinationPath "release/reprocore-$version-windows.zip"
+      - name: Create macOS universal archive
+        if: runner.os == 'macOS'
+        shell: bash
+        run: |
+          version="$(node -p "require('./packages/cli/package.json').version")"
+          mkdir -p release
+          COPYFILE_DISABLE=1 tar -czf "release/reprocore-$version-macos-universal.tar.gz" -C staging "reprocore-$version"
+      - name: Create Linux archive
+        if: runner.os == 'Linux'
+        shell: bash
+        run: |
+          version="$(node -p "require('./packages/cli/package.json').version")"
+          mkdir -p release
+          tar --sort=name --owner=0 --group=0 --numeric-owner -czf "release/reprocore-$version-linux.tar.gz" -C staging "reprocore-$version"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: release-${{ matrix.artifact }}
+          path: release/*
+          if-no-files-found: error
+          retention-days: 7
+
+  publish:
+    name: Publish npm, GitHub, and Gitee release
+    needs: [validate, platform-archives]
+    runs-on: ubuntu-latest
+    environment: release
+    permissions:
+      contents: write
+      id-token: write
+      attestations: write
+    env:
+      GITEE_ACCESS_TOKEN: ${{ secrets.GITEE_ACCESS_TOKEN }}
+      GITEE_OWNER: ${{ vars.GITEE_OWNER }}
+      GITEE_REPO: ${{ vars.GITEE_REPO }}
+      GIT_TAG: ${{ github.ref_name }}
+      GITEE_TARGET_COMMITISH: ${{ github.sha }}
+      RELEASE_DIRECTORY: ${{ github.workspace }}/release
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 11.25.0
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 24
+          cache: pnpm
+          registry-url: https://registry.npmjs.org
+      - run: pnpm install --frozen-lockfile
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: release-*
+          path: release
+          merge-multiple: true
+      - run: pnpm build
+      - name: Generate CycloneDX SBOM and initial checksums
+        run: pnpm release:metadata
+      - name: Generate SLSA provenance
+        id: provenance
+        uses: actions/attest@v4
+        with:
+          subject-checksums: release/SHA256SUMS
+      - name: Add provenance bundle and finalize checksums
+        shell: bash
+        env:
+          BUNDLE_PATH: ${{ steps.provenance.outputs.bundle-path }}
+        run: |
+          version="$(node -p "require('./packages/cli/package.json').version")"
+          cp "$BUNDLE_PATH" "release/reprocore-$version.provenance.sigstore.json"
+          pnpm release:metadata
+      - name: Publish public npm package with provenance
+        shell: bash
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+        run: |
+          version="$(node -p "require('./packages/cli/package.json').version")"
+          tarball="release/reprocore-$version.tgz"
+          published_sha="$(npm view "reprocore@$version" dist.shasum --json 2>/dev/null | tr -d '"' || true)"
+          if [ -n "$published_sha" ]; then
+            test "$published_sha" = "$(sha1sum "$tarball" | cut -d ' ' -f 1)"
+            echo "npm already contains the identical tarball; skipping duplicate publish"
+          else
+            npm publish "$tarball" --access public --provenance
+          fi
+      - name: Publish GitHub Release
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          if gh release view "$GIT_TAG" >/dev/null 2>&1; then
+            gh release upload "$GIT_TAG" release/* --clobber
+          else
+            gh release create "$GIT_TAG" release/* --verify-tag --generate-notes --title "ReproCore $GIT_TAG"
+          fi
+      - name: Mirror identical assets to Gitee Release
+        run: node scripts/publish-gitee-release.mjs

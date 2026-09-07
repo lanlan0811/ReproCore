@@ -83,6 +83,7 @@ server、自定义 Oracle 脚本以及需要强制断网的重放应使用 Docke
 - [架构](docs/architecture.md)
 - [安全模型](docs/security.md)
 - [`.mincase` 格式](docs/mincase-format.md)
+- [发布流程](docs/releasing.md)
 - [贡献指南](CONTRIBUTING.md)
 - [治理](GOVERNANCE.md)
 - [行为准则](CODE_OF_CONDUCT.md)
