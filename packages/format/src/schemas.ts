@@ -91,8 +91,24 @@ export const MinCaseManifestSchema = z
     protocolProfile: ProtocolProfileSchema,
     originalTransactionCount: z.number().int().nonnegative(),
     finalTransactionCount: z.number().int().nonnegative(),
+    originalFieldCount: z.number().int().nonnegative(),
+    finalFieldCount: z.number().int().nonnegative(),
     oracleHash: z.string().regex(/^sha256:[a-f0-9]{64}$/u),
+    fixtureHash: z.string().regex(/^sha256:[a-f0-9]{64}$/u),
+    proofHash: z.string().regex(/^sha256:[a-f0-9]{64}$/u),
+    traceHash: z.string().regex(/^sha256:[a-f0-9]{64}$/u),
+    reducerSet: z.array(z.string()).min(1),
+    baseline: z.object({
+      repeat: z.number().int().positive(),
+      passed: z.number().int().nonnegative(),
+    }),
+    finalVerification: z.object({
+      repeat: z.number().int().positive(),
+      passed: z.number().int().nonnegative(),
+    }),
     redactionVerified: z.boolean(),
+    sensitivity: SensitivitySchema,
+    exportConfirmed: z.boolean(),
   })
   .strict();
 export type MinCaseManifest = z.infer<typeof MinCaseManifestSchema>;

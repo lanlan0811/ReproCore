@@ -3,7 +3,14 @@ import tseslint from "typescript-eslint";
 
 export default tseslint.config(
   {
-    ignores: ["**/dist/**", "**/coverage/**", "**/*.d.ts"],
+    ignores: [
+      "**/dist/**",
+      "**/coverage/**",
+      "**/*.d.ts",
+      ".reprocore/**",
+      "temp/**",
+      "**/*.mincase/**",
+    ],
   },
   eslint.configs.recommended,
   ...tseslint.configs.recommended,

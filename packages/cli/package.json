@@ -5,7 +5,7 @@
   "license": "AGPL-3.0-only",
   "type": "module",
   "bin": {
-    "reprocore": "./dist/cli.js"
+    "reprocore": "./dist/cli.cjs"
   },
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
@@ -16,9 +16,10 @@
     }
   },
   "files": [
-    "dist/**/*.js",
-    "dist/**/*.d.ts",
-    "dist/**/*.map",
+    "dist/cli.cjs",
+    "dist/cli.cjs.map",
+    "dist/index.js",
+    "dist/index.d.ts",
     "README.md"
   ],
   "engines": {
@@ -27,11 +28,13 @@
   "scripts": {
     "build": "tsc -b"
   },
-  "dependencies": {
+  "devDependencies": {
     "@reprocore/capture-stdio": "workspace:*",
     "@reprocore/format": "workspace:*",
     "@reprocore/minimizer": "workspace:*",
     "@reprocore/oracles": "workspace:*",
-    "@reprocore/replay": "workspace:*"
+    "@reprocore/protocol-mcp": "workspace:*",
+    "@reprocore/replay": "workspace:*",
+    "yaml": "^2.8.1"
   }
 }

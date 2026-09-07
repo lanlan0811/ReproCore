@@ -32,6 +32,8 @@ jobs:
       - run: pnpm install --frozen-lockfile
       - run: pnpm verify
       - run: pnpm build
+      - run: pnpm pack:cli
+      - run: pnpm smoke:install
 
   node-22-compatibility:
     name: Node 22.13 compatibility

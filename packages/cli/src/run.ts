@@ -1,5 +1,5 @@
-import { writeFileSync } from "node:fs";
-import { resolve } from "node:path";
+import { readFileSync, writeFileSync } from "node:fs";
+import { basename, dirname, join, resolve } from "node:path";
 import type { Writable } from "node:stream";
 import {
   captureProcess,
@@ -26,6 +26,7 @@ import {
   verifyBaseline,
 } from "@reprocore/replay";
 import { EXIT_CODES, VERSION } from "./index.js";
+import { createMinCase, verifyMinCase } from "./case.js";
 import { minimizeFixtureJson } from "./minimize-fixture.js";
 
 const HELP = `ReproCore ${VERSION}
@@ -36,6 +37,8 @@ Usage:
   reprocore oracle init --out <oracle.yaml> [--name <name>] [--json]
   reprocore replay --fixture <fixture.json> --oracle <oracle.yaml> [--repeat <count>] [--json]
   reprocore minimize --fixture <fixture.json> --oracle <oracle.yaml> --out <fixture.json> [--json]
+  reprocore pack --fixture <fixture.json> --oracle <oracle.yaml> --proof <proof.json> --out <name.mincase.zip> [--json]
+  reprocore verify --case <name.mincase> [--repeat <count>] [--json]
   reprocore --version
 
 Commands:
@@ -44,6 +47,8 @@ Commands:
   oracle   Create a versioned failure-oracle document
   replay   Run deterministic fixed-response replay and baseline checks
   minimize Reduce replay transactions while preserving the failure Oracle
+  pack     Build a deterministic portable .mincase directory and ZIP
+  verify   Validate hashes and reproduce a .mincase failure
 
 Options:
   -h, --help         Show this help
@@ -387,6 +392,72 @@ export async function runCli(
       return minimality === "oneMinimal"
         ? EXIT_CODES.success
         : EXIT_CODES.unresolved;
+    }
+
+    if (command === "pack") {
+      const commandArgs = args.slice(1);
+      const fixturePath = optionValue(commandArgs, "--fixture");
+      const oraclePath = optionValue(commandArgs, "--oracle");
+      const proofPath = optionValue(commandArgs, "--proof");
+      const outputPath = optionValue(commandArgs, "--out");
+      if (
+        fixturePath === undefined ||
+        oraclePath === undefined ||
+        proofPath === undefined ||
+        outputPath === undefined
+      ) {
+        throw new Error(
+          "pack requires --fixture, --oracle, --proof, and --out <name.mincase.zip>",
+        );
+      }
+      if (!outputPath.endsWith(".mincase.zip")) {
+        throw new Error("pack output must end with .mincase.zip");
+      }
+      const inferredName = basename(outputPath, ".mincase.zip");
+      const name = optionValue(commandArgs, "--name") ?? inferredName;
+      const resolvedOutput = resolve(outputPath);
+      const caseDirectory = resolve(
+        optionValue(commandArgs, "--case-dir") ??
+          join(dirname(resolvedOutput), `${name}.mincase`),
+      );
+      const created = createMinCase({
+        name,
+        caseDirectory,
+        outputZip: resolvedOutput,
+        fixture: readReplayFixture(resolve(fixturePath)),
+        oracle: readOracleDocument(resolve(oraclePath)),
+        proof: JSON.parse(readFileSync(resolve(proofPath), "utf8")) as unknown,
+      });
+      writeResult(
+        io,
+        commandArgs.includes("--json"),
+        created,
+        `Created ${created.outputZip}`,
+      );
+      return created.manifest.caseType === "executable"
+        ? EXIT_CODES.success
+        : EXIT_CODES.unresolved;
+    }
+
+    if (command === "verify") {
+      const commandArgs = args.slice(1);
+      const caseDirectory = optionValue(commandArgs, "--case");
+      if (caseDirectory === undefined)
+        throw new Error("verify requires --case <name.mincase>");
+      const repeatText = optionValue(commandArgs, "--repeat");
+      const repeat =
+        repeatText === undefined ? 5 : Number.parseInt(repeatText, 10);
+      if (!Number.isInteger(repeat) || repeat < 1 || repeat > 100) {
+        throw new Error("--repeat must be an integer between 1 and 100");
+      }
+      const verification = verifyMinCase(resolve(caseDirectory), repeat);
+      writeResult(
+        io,
+        commandArgs.includes("--json"),
+        verification,
+        `${verification.valid ? "VERIFIED" : "FAILED"}: ${verification.passed}/${repeat}`,
+      );
+      return verification.valid ? EXIT_CODES.success : EXIT_CODES.unresolved;
     }
 
     io.stderr.write(`Unknown command: ${command}\n`);
